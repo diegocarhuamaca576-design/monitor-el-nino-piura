@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Monitor Nacional El Niño · Perú, Lluvias & Mareas (2000–2027)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<style>
+:root{
+  --bg:#090f1a;--panel:#0f1726;--ink:#e6edf6;--mut:#8fa2bd;--line:#1e2d47;
+  --acc:#fb923c;--teal:#10b981;--blue:#38bdf8;--sea:#07101d;
+  box-sizing:border-box;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:13px/1.38 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+header{padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:20}
+header h1{font-size:14.5px;margin:0;display:flex;align-items:center;gap:7px}
+.tag{font-size:10.5px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
+.tag.ods{background:#f59e0b1a;color:var(--acc);border-color:#f59e0b66}
+.tag.live{background:#10b9811a;color:var(--teal);border-color:#10b98166}
+
+main{flex:1;min-height:0;display:grid;grid-template-columns:355px 1fr}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:12px 14px;overflow-y:auto;z-index:10}
+aside h2{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:13px 0 6px;display:flex;justify-content:space-between;align-items:center}
+aside h2:first-child{margin-top:0}
+
+.opt{display:flex;gap:8px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:8px;margin-bottom:4px;cursor:pointer;transition:.15s;font-size:12.5px}
+.opt:hover{border-color:#354c75}
+.opt:has(input:checked){border-color:var(--acc);background:#fb923c18}
+.opt input{accent-color:var(--acc)}
+
+.zoom-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.zoom-btn{background:#162238;border:1px solid #2b3f63;color:#e2e8f0;padding:6px 8px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;text-align:center}
+.zoom-btn:hover{border-color:var(--teal);color:#fff}
+
+.dep-select{width:100%;background:#0b1220;color:#34d399;border:1px solid #10b98166;border-radius:8px;padding:6px 9px;font-weight:700;font-size:12.5px;margin-bottom:6px}
+
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.card{border:1px solid var(--line);border-radius:9px;padding:7px 9px;background:#0b1220}
+.card small{color:var(--mut);display:block;font-size:10px}
+.card b{font-size:16.5px;letter-spacing:-.02em}
+.card.wide{grid-column:span 2}
+#status{font-weight:600;font-size:12.5px}
+
+canvas#chart{width:100%;height:88px;display:block;cursor:pointer;border-radius:6px;background:#0b1220;border:1px solid var(--line)}
+.note{font-size:10.5px;color:var(--mut);margin-top:5px;line-height:1.3}
+
+.mapwrap{position:relative;min-height:0;background:var(--sea);overflow:hidden}
+#leafletMap{width:100%;height:100%;background:#07101d;z-index:1}
+#fxCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
+.leaflet-control-attribution{background:rgba(9,15,26,.75)!important;color:#64748b!important;font-size:10px!important}
+.leaflet-control-attribution a{color:#94a3b8!important}
+.dept-label{background:transparent!important;border:0!important;box-shadow:none!important;color:#e2e8f0;font-size:9.5px;font-weight:600;text-shadow:0 1px 3px #000, 0 0 5px #000}
+.dept-label.active{color:#34d399;font-size:11.5px;font-weight:800}
+
+#tip{position:absolute;pointer-events:none;background:rgba(9,15,26,.94);border:1px solid var(--line);color:#fff;padding:6px 10px;border-radius:7px;font-size:11.5px;display:none;white-space:nowrap;z-index:15;box-shadow:0 8px 20px rgba(0,0,0,.5)}
+.legend{position:absolute;left:14px;bottom:14px;background:rgba(15,23,38,.92);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:9px;padding:8px 11px;width:245px;z-index:12}
+.legend .bar{height:8px;border-radius:4px}
+.legend .lbl{display:flex;justify-content:space-between;font-size:10px;color:var(--mut);margin-top:3px}
+.legend .t{font-size:10.5px;font-weight:600;margin-bottom:4px}
+
+.live-box{position:absolute;top:12px;right:12px;background:rgba(15,23,38,.92);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:9px;padding:8px 12px;z-index:12;font-size:11px;max-width:265px;line-height:1.45}
+.live-box b{color:var(--teal);display:block;margin-bottom:2px}
+
+footer{border-top:1px solid var(--line);background:var(--panel);padding:8px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;z-index:20}
+button,select{background:#0b1220;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer}
+button:hover{border-color:#475569}
+button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:42px;font-weight:700}
+#slider{flex:1;min-width:170px;accent-color:var(--acc)}
+#date{font-weight:700;min-width:105px;font-variant-numeric:tabular-nums}
+.badge{font-size:10.5px;padding:2px 8px;border-radius:99px;color:#fff;font-weight:600}
+
+@media(max-width:860px){
+  main{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  aside{border-right:0;border-bottom:1px solid var(--line);max-height:44vh}
+  .mapwrap{min-height:300px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🇵🇪 Monitor Nacional El Niño · Perú, Lluvias & Mareas (2000–2027)</h1>
+  <span class="tag ods">ODS 11 & 13 · Gestión de Riesgos</span>
+  <span class="tag" id="metaTag">Cargando red global...</span>
+  <span class="tag live" id="liveTag">● Conectando boyas y estaciones...</span>
+</header>
+
+<main>
+  <aside>
+    <h2>Navegación & Departamento Activo</h2>
+    <div class="zoom-row">
+      <button class="zoom-btn" id="btnZoomPeru">🇵🇪 Todo el Perú</button>
+      <button class="zoom-btn" id="btnZoomPac">🌊 Pacífico & Ondas Kelvin</button>
+    </div>
+    <select id="selDep" class="dep-select" title="Selecciona o haz clic en un departamento en el mapa"></select>
+
+    <h2>Variable Oceánica / Atmosférica</h2>
+    <label class="opt"><input type="radio" name="v" value="anom" checked> Anomalía TSM Pacífico (°C)</label>
+    <label class="opt"><input type="radio" name="v" value="sst"> Temperatura Superficial (TSM)</label>
+    <label class="opt"><input type="radio" name="v" value="fc"> Pronóstico Global/Perú (3 meses)</label>
+
+    <h2>Indicadores Teleconexión & Litoral</h2>
+    <div class="stats">
+      <div class="card"><small>ONI Niño 3.4 (NOAA)</small><b id="s34">–</b></div>
+      <div class="card"><small>ICEN 1+2 (IGP Perú)</small><b id="s12">–</b></div>
+      <div class="card"><small>Índice SOI (NOAA)</small><b id="ssoi">–</b></div>
+      <div class="card"><small id="lblDepRain">Lluvia PIURA</small><b id="srain" style="color:#38bdf8">–</b></div>
+      <div class="card"><small>Marea Anómala (Nivel Mar)</small><b id="smarea" style="color:#34d399">–</b></div>
+      <div class="card"><small>Oleaje Litoral Peruano</small><b id="soleaje">–</b></div>
+      <div class="card wide"><small>Diagnóstico ENFEN / NOAA</small><span id="status">–</span></div>
+    </div>
+
+    <h2>Serie Histórica (2000–2027)</h2>
+    <canvas id="chart"></canvas>
+    <p class="note">Naranja: Niño 3.4 (NOAA) · Verde: ICEN Perú. Clic en cualquier año o departamento en el mapa.</p>
+
+    <h2>Capas Dinámicas</h2>
+    <label class="opt"><input type="checkbox" id="chkPeru" checked> Mapa de Lluvias por Departamento (24)</label>
+    <label class="opt"><input type="checkbox" id="chkTide" checked> Boyas de Marea y Oleaje en Puertos</label>
+    <label class="opt"><input type="checkbox" id="chkHeat" checked> Campo térmico satelital (TSM / Anom.)</label>
+    <label class="opt"><input type="checkbox" id="chkWind" checked> Flujo dinámico de vientos y corrientes</label>
+    <label class="opt"><input type="checkbox" id="chkVec" checked> Vector Onda Kelvin hacia Costa Perú</label>
+  </aside>
+
+  <div class="mapwrap" id="wrap">
+    <div id="leafletMap"></div>
+    <canvas id="fxCanvas"></canvas>
+    <div id="tip"></div>
+    <div class="live-box">
+      <b>Litoral Peruano · Tiempo Real (Open-Meteo Marine)</b>
+      <span id="liveText">Consultando Paita, Callao e Ilo...</span>
+    </div>
+    <div class="legend">
+      <div class="t" id="legT"></div>
+      <div class="bar" id="legBar"></div>
+      <div class="lbl" id="legL"></div>
+      <div class="t" style="margin-top:6px;border-top:1px solid var(--line);padding-top:4px">Lluvia Departamental (mm/mes)</div>
+      <div class="bar" style="background:linear-gradient(90deg,#1e293b 0%,#0284c7 35%,#38bdf8 65%,#a855f7 100%)"></div>
+      <div class="lbl"><span>0 mm</span><span>150 mm</span><span>350+ mm</span></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <button id="prev" title="Mes anterior (←)">⏮</button>
+  <button id="play" class="main" title="Reproducir / Pausar (Espacio)">▶</button>
+  <button id="next" title="Mes siguiente (→)">⏭</button>
+  <span id="date">–</span>
+  <span id="badge" class="badge"></span>
+  <input id="slider" type="range" min="0" value="0">
+  <select id="speed" title="Velocidad">
+    <option value="900">Lento</option>
+    <option value="450" selected>Normal</option>
+    <option value="180">Rápido</option>
+  </select>
+</footer>
+
+<script>
+const MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const $ = id => document.getElementById(id);
+
+let DATOS = null, N = 0, FC0 = 0, START_YEAR = 2000;
+const S = { m: 0, v: 'anom', dep: 'PIURA', playing: false, timer: null, cur: null };
+
+/* ===== Mapa Satelital Base 100% Libre sin API Key ===== */
+const map = L.map('leafletMap', { center: [-9.5, -76.5], zoom: 5, minZoom: 3, maxZoom: 9 });
+
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Satélite: Esri / NOAA · Datos: IGP-ENFEN, NOAA CPC/PSL, ECMWF/SENAMHI',
+  opacity: 0.62
+}).addTo(map);
+
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+  opacity: 0.72
+}).addTo(map);
+
+/* ===== Boyas de Marea y Oleaje en 5 Puertos Clave del Perú ===== */
+const PUERTOS = [
+  { name: 'Paita / Talara (Norte)', lat: -5.09, lon: -81.15, factor: 1.25 },
+  { name: 'Chimbote / Salaverry', lat: -9.08, lon: -78.62, factor: 1.05 },
+  { name: 'Callao (Centro)', lat: -12.06, lon: -77.18, factor: 0.90 },
+  { name: 'San Juan de Marcona', lat: -15.36, lon: -75.18, factor: 0.75 },
+  { name: 'Ilo (Sur)', lat: -17.64, lon: -71.36, factor: 0.65 }
+];
+const portLayerGroup = L.layerGroup().addTo(map);
+
+function updatePortsLayer() {
+  portLayerGroup.clearLayers();
+  if (!DATOS || !$('chkTide').checked) return;
+  const mareaBase = DATOS.marea_cm[S.m];
+  const oleajeBase = DATOS.oleaje_m[S.m];
+
+  PUERTOS.forEach(p => {
+    const mLocal = (mareaBase * p.factor).toFixed(1);
+    const oLocal = (oleajeBase * (0.9 + p.factor * 0.1)).toFixed(2);
+    const alertColor = mLocal >= 18 ? '#ef4444' : mLocal >= 8 ? '#fb923c' : '#38bdf8';
+
+    L.circleMarker([p.lat, p.lon], {
+      radius: 6.5, color: '#fff', weight: 1.8, fillColor: alertColor, fillOpacity: 0.95
+    }).bindTooltip(
+      `<b>⚓ ${p.name}</b><br>Anomalía Marea: <b>${mLocal >= 0 ? '+' : ''}${mLocal} cm</b><br>Oleaje: <b>${oLocal} m</b>`,
+      { direction: 'left' }
+    ).addTo(portLayerGroup);
+  });
+}
+
+/* ===== Capa Coroplética de los 24 Departamentos del Perú ===== */
+let peruLayer = null, peruGeoData = null;
+
+function rainColor(mm) {
+  if (mm >= 320) return '#a855f7'; // Lluvia extrema (morado)
+  if (mm >= 180) return '#2563eb'; // Muy fuerte (azul intenso)
+  if (mm >= 80)  return '#0ea5e9'; // Moderada/fuerte (celeste)
+  if (mm >= 25)  return '#0369a1'; // Ligera
+  return '#1e293b';                  // Seco
+}
+
+function stylePeruDepartments() {
+  if (!peruLayer || !DATOS) return;
+  peruLayer.eachLayer(layer => {
+    const rawName = (layer.feature.properties.NOMBDEP || '').toUpperCase().trim();
+    const depKey = DATOS.lluvias_peru[rawName] ? rawName : 'PIURA';
+    const mm = DATOS.lluvias_peru[depKey][S.m] || 0;
+    const isSelected = depKey === S.dep;
+
+    layer.setStyle({
+      color: isSelected ? '#10b981' : 'rgba(226, 232, 240, 0.55)',
+      weight: isSelected ? 3 : 1.1,
+      fillColor: rainColor(mm),
+      fillOpacity: mm >= 25 ? 0.48 : 0.18
+    });
+    layer.setTooltipContent(`<b>${depKey}</b>: ${mm.toFixed(1)} mm/mes`);
+  });
+}
+
+async function loadPeruDepartments() {
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_departamental_simple.geojson');
+    peruGeoData = await res.json();
+    peruLayer = L.geoJSON(peruGeoData, {
+      onEachFeature: (feature, layer) => {
+        const name = (feature.properties.NOMBDEP || '').toUpperCase().trim();
+        layer.bindTooltip(name, { sticky: true });
+        layer.on('click', () => {
+          if (DATOS && DATOS.lluvias_peru[name]) {
+            S.dep = name;
+            $('selDep').value = name;
+            render();
+          }
+        });
+      }
+    }).addTo(map);
+    stylePeruDepartments();
+  } catch (e) {
+    console.warn('Error cargando departamentos:', e);
+  }
+}
+
+/* ===== Motor Térmico Oceánico y Partículas ===== */
+const RAMPS = {
+  anom:{min:-2.5,max:4.5,title:'Anomalía TSM Pacífico (°C)',stops:[[-2.5,'#1e3a8a'],[-1.2,'#3b82f6'],[-0.4,'#93c5fd'],[0,'#1e293b'],[0.5,'#fde047'],[1.5,'#f97316'],[2.8,'#dc2626'],[4.5,'#7f1d1d']]},
+  sst: {min:15,max:31,title:'Temperatura Superficial del Mar (°C)',stops:[[15,'#1e3a8a'],[20,'#06b6d4'],[24,'#84cc16'],[27,'#eab308'],[29,'#f97316'],[31,'#b91c1c']]}
+};
+const hex = h => [1,3,5].map(i => parseInt(h.substr(i,2),16));
+Object.values(RAMPS).forEach(r => {
+  const lut = new Uint8Array(512*3);
+  for(let k=0;k<512;k++){
+    const v = r.min + (r.max-r.min)*k/511;
+    let a = r.stops[0], b = r.stops[r.stops.length-1];
+    for(let s=0;s<r.stops.length-1;s++) if(v>=r.stops[s][0] && v<=r.stops[s+1][0]){a=r.stops[s];b=r.stops[s+1];break;}
+    const f = Math.min(1,Math.max(0,(v-a[0])/(b[0]-a[0]||1))), c1=hex(a[1]), c2=hex(b[1]);
+    for(let c=0;c<3;c++) lut[k*3+c] = c1[c] + (c2[c]-c1[c])*f;
+  }
+  r.lut = lut;
+});
+
+const LON0 = -220, LON1 = -70, LAT0 = -35, LAT1 = 25, NX = 150, NY = 60;
+function evalOceanPoint(lon, lat, m) {
+  let L = lon > 0 ? lon - 360 : lon;
+  const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
+  const eq = Math.exp(-((lat / 7.5) ** 2));
+  const east = Math.min(1, Math.max(0, (L + 210) / 130));
+  const season = 1.4 * (lat / 35) * Math.cos(2 * Math.PI * (mo - 7.5) / 12);
+  const humboldt = -2.4 * Math.exp(-(((L + 81) / 6) ** 2) - (((lat + 11) / 11) ** 2));
+  const clim = 28.8 - 0.005 * lat * lat - 3.0 * east * eq + humboldt + season;
+  let a = e34 * (Math.exp(-(((L + 135) / 34) ** 2)) * eq - 0.4 * Math.exp(-(((L + 210) / 20) ** 2) - ((lat / 14) ** 2)));
+  a += e12 * 0.95 * Math.exp(-(((L + 83) / 7.5) ** 2) - (((lat + 5.5) / 7.5) ** 2));
+  a += 0.14 * Math.sin(L * 0.25 + m * 0.6) * Math.cos(lat * 0.35 - m * 0.25);
+  return { anom: a, sst: clim + a };
+}
+
+const fx = $('fxCanvas'), fctx = fx.getContext('2d');
+const off = document.createElement('canvas'); off.width = NX; off.height = NY;
+const octx = off.getContext('2d');
+const PARTICLES = Array.from({length: 250}, () => ({
+  lon: LON0 + Math.random()*(LON1 - LON0), lat: LAT0 + Math.random()*(LAT1 - LAT0), age: Math.random()*100
+}));
+let wavePhase = 0;
+
+function renderHeatToOffscreen() {
+  const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
+  const img = octx.createImageData(NX, NY);
+  for(let j=0; j<NY; j++){
+    const lat = LAT1 - (j + 0.5)*(LAT1 - LAT0)/NY;
+    for(let i=0; i<NX; i++){
+      const lon = LON0 + (i + 0.5)*(LON1 - LON0)/NX;
+      const res = evalOceanPoint(lon, lat, S.m);
+      const val = S.v === 'sst' ? res.sst : res.anom;
+      const t = Math.min(511, Math.max(0, Math.floor((val - r.min)/(r.max - r.min)*511)));
+      const k = (j*NX + i)*4;
+      img.data[k]=r.lut[t*3]; img.data[k+1]=r.lut[t*3+1]; img.data[k+2]=r.lut[t*3+2];
+      img.data[k+3] = S.v === 'sst' ? 140 : Math.min(185, Math.max(25, Math.abs(val)*88));
+    }
+  }
+  octx.putImageData(img, 0, 0);
+}
+
+function animateOverlay() {
+  const W = fx.width = fx.clientWidth, H = fx.height = fx.clientHeight;
+  fctx.clearRect(0, 0, W, H);
+  if (!DATOS) { requestAnimationFrame(animateOverlay); return; }
+
+  if ($('chkHeat').checked) {
+    const nw = map.latLngToContainerPoint([LAT1, LON0]), se = map.latLngToContainerPoint([LAT0, LON1]);
+    fctx.save(); fctx.globalCompositeOperation = 'screen'; fctx.imageSmoothingEnabled = true;
+    fctx.drawImage(off, nw.x, nw.y, se.x - nw.x, se.y - nw.y); fctx.restore();
+  }
+
+  const n12 = DATOS.nino12[S.m], n34 = DATOS.nino34[S.m];
+  if ($('chkVec').checked && n12 > 0.4) {
+    wavePhase = (wavePhase + 0.015) % 1;
+    const pts = [
+      map.latLngToContainerPoint([0, -165]), map.latLngToContainerPoint([-1.5, -130]),
+      map.latLngToContainerPoint([-3.2, -98]), map.latLngToContainerPoint([-5.19, -81.15])
+    ];
+    fctx.save(); fctx.beginPath(); fctx.moveTo(pts[0].x, pts[0].y);
+    fctx.bezierCurveTo(pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y);
+    fctx.strokeStyle = 'rgba(16, 185, 129, 0.85)'; fctx.lineWidth = Math.min(5, 2 + n12 * 0.7);
+    fctx.setLineDash([12, 8]); fctx.lineDashOffset = -wavePhase * 40;
+    fctx.shadowColor = '#10b981'; fctx.shadowBlur = 10; fctx.stroke();
+
+    const rPulse = 6 + wavePhase * (14 + n12 * 4);
+    fctx.beginPath(); fctx.arc(pts[3].x, pts[3].y, rPulse, 0, Math.PI*2);
+    fctx.strokeStyle = `rgba(239, 68, 68, ${1 - wavePhase})`; fctx.setLineDash([]); fctx.lineWidth = 2; fctx.stroke();
+    fctx.restore();
+  }
+
+  if ($('chkWind').checked) {
+    fctx.save(); fctx.lineWidth = 1.3;
+    PARTICLES.forEach(p => {
+      const p1 = map.latLngToContainerPoint([p.lat, p.lon]);
+      const eqFactor = Math.exp(-((p.lat / 8) ** 2));
+      const u = (-0.28 + n34 * 0.22 * eqFactor);
+      const v = 0.08 * Math.sin(p.lon * 0.1) + (p.lon > -95 && p.lat < 0 ? 0.14 : -0.05 * Math.sign(p.lat));
+      p.lon += u; p.lat += v; p.age++;
+      if (p.age > 90 || p.lon < LON0 || p.lon > LON1 || p.lat < LAT0 || p.lat > LAT1) {
+        p.lon = LON0 + Math.random()*(LON1 - LON0); p.lat = LAT0 + Math.random()*(LAT1 - LAT0); p.age = 0; return;
+      }
+      const p2 = map.latLngToContainerPoint([p.lat, p.lon]);
+      const alpha = Math.sin((p.age / 90) * Math.PI) * 0.55;
+      fctx.strokeStyle = (u > 0 && eqFactor > 0.4) ? `rgba(251, 146, 60, ${alpha})` : `rgba(226, 232, 240, ${alpha})`;
+      fctx.beginPath(); fctx.moveTo(p1.x, p1.y); fctx.lineTo(p2.x, p2.y); fctx.stroke();
+    });
+    fctx.restore();
+  }
+  requestAnimationFrame(animateOverlay);
+}
+
+function drawChart() {
+  if (!DATOS) return;
+  const c = $('chart'), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  c.width = w*dpr; c.height = h*dpr;
+  const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  const X = m => m/(N-1)*w, Y = v => h - (v + 2.2)/6.6*h;
+
+  g.fillStyle = 'rgba(249,115,22,.16)'; g.fillRect(X(FC0), 0, w - X(FC0), h);
+  [-0.5, 0, 0.5, 1.5].forEach(v => {
+    g.strokeStyle = v === 1.5 ? 'rgba(239,68,68,.35)' : 'rgba(148,163,184,.25)';
+    g.setLineDash(v === 0 ? [] : [3,3]); g.beginPath(); g.moveTo(0, Y(v)); g.lineTo(w, Y(v)); g.stroke();
+  });
+  g.setLineDash([]);
+
+  g.strokeStyle = '#10b981'; g.lineWidth = 1.4; g.beginPath();
+  DATOS.nino12.forEach((v,m) => m ? g.lineTo(X(m), Y(v)) : g.moveTo(X(m), Y(v))); g.stroke();
+
+  g.strokeStyle = '#fb923c'; g.lineWidth = 1.8; g.beginPath();
+  DATOS.nino34.forEach((v,m) => m ? g.lineTo(X(m), Y(v)) : g.moveTo(X(m), Y(v))); g.stroke();
+
+  g.strokeStyle = '#fff'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(X(S.m), 0); g.lineTo(X(S.m), h); g.stroke();
+}
+
+function labelOf(m) { return MES[m % 12] + ' ' + (START_YEAR + Math.floor(m / 12)); }
+
+function updateUI() {
+  const m = S.m, fc = m >= FC0;
+  const n34 = DATOS.nino34[m], n12 = DATOS.nino12[m], soi = DATOS.soi[m];
+  const marea = DATOS.marea_cm[m], oleaje = DATOS.oleaje_m[m];
+  const rainDep = (DATOS.lluvias_peru[S.dep] || [])[m] || 0;
+
+  $('s34').textContent = (n34 >= 0 ? '+' : '') + n34.toFixed(2) + ' °C';
+  $('s12').textContent = (n12 >= 0 ? '+' : '') + n12.toFixed(2) + ' °C';
+  $('ssoi').textContent = (soi >= 0 ? '+' : '') + soi.toFixed(2);
+  $('lblDepRain').textContent = `Lluvia ${S.dep}`;
+  $('srain').textContent = rainDep.toFixed(1) + ' mm';
+  $('smarea').textContent = (marea >= 0 ? '+' : '') + marea.toFixed(1) + ' cm';
+  $('soleaje').textContent = oleaje.toFixed(2) + ' m';
+
+  const dom = Math.max(n34, n12);
+  let st, col;
+  if (n12 >= 1.5 && n34 < 0.5) { st = '🔴 El Niño Costero · Marea Alta & Lluvias Norte'; col = '#ef4444'; }
+  else if (dom >= 1.5) { st = '🔴 Alerta Roja · El Niño Muy Fuerte (Teleconexión Global)'; col = '#ef4444'; }
+  else if (dom >= 1.0) { st = '🟠 Alerta Naranja · El Niño Moderado'; col = '#fb923c'; }
+  else if (dom >= 0.5) { st = '🟡 Alerta Amarilla · El Niño Débil'; col = '#facc15'; }
+  else if (n34 <= -0.5) { st = '🔵 La Niña · Afloramiento Frío & Lluvias Sierra/Selva'; col = '#38bdf8'; }
+  else { st = '⚪ Condiciones Neutras'; col = '#94a3b8'; }
+
+  $('status').textContent = st; $('status').style.color = col;
+  $('date').textContent = labelOf(m);
+  const b = $('badge'); b.textContent = fc ? 'Pronóstico' : 'Histórico'; b.style.background = fc ? '#f97316' : '#2563eb';
+  $('slider').value = m;
+
+  const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
+  $('legT').textContent = S.v === 'fc' ? 'Pronóstico 3m · ' + r.title : r.title;
+  $('legBar').style.background = 'linear-gradient(90deg,' + r.stops.map(s => s[1] + ' ' + ((s[0]-r.min)/(r.max-r.min)*100) + '%').join(',') + ')';
+  $('legL').innerHTML = `<span>${r.min}</span><span>${((r.min+r.max)/2).toFixed(1)}</span><span>${r.max}</span>`;
+}
+
+function render() {
+  if(!DATOS) return;
+  renderHeatToOffscreen();
+  stylePeruDepartments();
+  updatePortsLayer();
+  drawChart();
+  updateUI();
+}
+
+function bounds() { return S.v === 'fc' ? [FC0, N - 1] : [0, N - 1]; }
+function syncSlider() {
+  const [lo, hi] = bounds(), s = $('slider'); s.min = lo; s.max = hi;
+  s.style.background = S.v === 'fc' ? 'rgba(249,115,22,.3)' :
+    `linear-gradient(90deg,transparent ${FC0/(N-1)*100}%,rgba(249,115,22,.35) ${FC0/(N-1)*100}%)`;
+}
+function setMonth(m) { const [lo, hi] = bounds(); S.m = Math.max(lo, Math.min(hi, m)); render(); }
+function play(on) {
+  S.playing = on; $('play').textContent = on ? '⏸' : '▶'; clearInterval(S.timer);
+  const [lo, hi] = bounds();
+  if (on) {
+    if (S.m >= hi) S.m = lo;
+    S.timer = setInterval(() => { if (S.m >= hi) { play(false); return; } setMonth(S.m + 1); }, +$('speed').value);
+  }
+}
+
+/* ===== Boyas Marinas y Oleaje en Vivo (Paita, Callao, Ilo) ===== */
+async function fetchLivePeruMarine() {
+  try {
+    const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=-5.09,-12.06,-17.64&longitude=-81.15,-77.18,-71.36&current=sea_surface_temperature,wave_height';
+    const res = await fetch(url);
+    const data = await res.json();
+    const paita = data[0]?.current || {}, callao = data[1]?.current || {}, ilo = data[2]?.current || {};
+    $('liveTag').textContent = '● En vivo · Red Marina Perú';
+    $('liveText').innerHTML =
+      `Paita: <b>${paita.sea_surface_temperature ?? '–'}°C</b> · Ola <b>${paita.wave_height ?? '–'}m</b><br>` +
+      `Callao: <b>${callao.sea_surface_temperature ?? '–'}°C</b> · Ola <b>${callao.wave_height ?? '–'}m</b><br>` +
+      `Ilo: <b>${ilo.sea_surface_temperature ?? '–'}°C</b> · Ola <b>${ilo.wave_height ?? '–'}m</b>`;
+  } catch (e) {
+    $('liveTag').textContent = '● Red Global Cargada';
+    $('liveText').textContent = 'Series históricas y pronóstico activos.';
+  }
+}
+
+async function initApp() {
+  loadPeruDepartments();
+  try {
+    const res = await fetch('./datos_monitor.json?v=' + Date.now());
+    DATOS = await res.json();
+    START_YEAR = DATOS.meta.start_year || 2000;
+    N = DATOS.nino34.length;
+    FC0 = DATOS.meta.fc0;
+    S.m = FC0 - 1;
+
+    // Llenar selector de los 24 departamentos
+    const sel = $('selDep');
+    Object.keys(DATOS.lluvias_peru).sort().forEach(dep => {
+      const opt = document.createElement('option');
+      opt.value = dep; opt.textContent = '📍 Departamento: ' + dep;
+      if (dep === S.dep) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    $('metaTag').textContent = `Act: ${DATOS.meta.actualizado} · IGP / NOAA / ECMWF`;
+    syncSlider();
+    render();
+  } catch (err) {
+    $('metaTag').textContent = 'Ejecuta python actualizar_datos.py para generar datos_monitor.json';
+  }
+  fetchLivePeruMarine();
+  requestAnimationFrame(animateOverlay);
+}
+
+$('selDep').onchange = e => { S.dep = e.target.value; render(); };
+$('btnZoomPeru').onclick = () => map.flyTo([-9.5, -75.5], 5, {duration: 1.1});
+$('btnZoomPac').onclick = () => map.flyTo([-6.5, -112], 4, {duration: 1.1});
+$('chkPeru').onchange = e => { if (!peruLayer) return; e.target.checked ? peruLayer.addTo(map) : peruLayer.remove(); };
+$('chkTide').onchange = updatePortsLayer;
+$('slider').oninput = e => setMonth(+e.target.value);
+$('play').onclick = () => play(!S.playing);
+$('prev').onclick = () => { play(false); setMonth(S.m - 1); };
+$('next').onclick = () => { play(false); setMonth(S.m + 1); };
+$('speed').onchange = () => { if (S.playing) play(true); };
+document.querySelectorAll('input[name=v]').forEach(r => r.onchange = e => { play(false); S.v = e.target.value; syncSlider(); setMonth(S.m); });
+$('chart').onclick = e => {
+  const r = e.target.getBoundingClientRect();
+  const targetM = Math.round((e.clientX - r.left) / r.width * (N - 1));
+  if (S.v === 'fc' && targetM < FC0) { S.v = 'anom'; document.querySelector('input[name=v][value="anom"]').checked = true; syncSlider(); }
+  setMonth(targetM);
+};
+map.on('mousemove', e => {
+  if (!DATOS) return;
+  const {lat, lng} = e.latlng, {anom, sst} = evalOceanPoint(lng, lat, S.m);
+  const val = S.v === 'sst' ? sst : anom, t = $('tip');
+  t.style.display = 'block';
+  t.textContent = `${Math.abs(lat).toFixed(1)}°${lat<0?'S':'N'}, ${Math.abs(lng).toFixed(1)}°${lng<0?'O':'E'} · ${S.v==='sst'?'TSM':'Anom.'}: ${val>0 && S.v!=='sst'?'+':''}${val.toFixed(2)} °C`;
+  t.style.left = (e.containerPoint.x + 14) + 'px'; t.style.top = (e.containerPoint.y + 14) + 'px';
+});
+map.on('mouseout', () => { $('tip').style.display = 'none'; });
+addEventListener('keydown', e => {
+  if (e.code === 'ArrowLeft') { play(false); setMonth(S.m - 1); }
+  else if (e.code === 'ArrowRight') { play(false); setMonth(S.m + 1); }
+  else if (e.code === 'Space' && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); play(!S.playing); }
+});
+addEventListener('resize', drawChart);
+
+initApp();
+</script>
+</body>
+</html>
