@@ -633,5 +633,205 @@ addEventListener('resize', () => {
 
 initApp();
 </script>
+<!-- ===== ORExIS · Asistente virtual ===== -->
+<style>
+#oxOrb{position:fixed;right:14px;bottom:calc(var(--ox-b,70px) + 12px);width:64px;height:64px;z-index:1000;border:0;padding:0;background:none;border-radius:50%;cursor:pointer;filter:drop-shadow(0 6px 14px rgba(0,0,0,.55));transition:transform .2s}
+#oxOrb:hover{transform:scale(1.06)}
+#oxOrb canvas{width:100%;height:100%;display:block}
+#oxOrb.spk{filter:drop-shadow(0 0 16px #38bdf8cc)}
+#oxPanel{position:fixed;right:14px;bottom:calc(var(--ox-b,70px) + 84px);width:345px;max-width:calc(100vw - 28px);max-height:62dvh;z-index:1000;display:none;flex-direction:column;gap:8px;background:rgba(15,23,38,.97);backdrop-filter:blur(10px);border:1px solid #38bdf866;border-radius:14px;padding:11px 13px;box-shadow:0 12px 32px rgba(0,0,0,.7)}
+#oxPanel.open{display:flex}
+.ox-top{display:flex;gap:6px;align-items:center}
+.ox-top b{flex:1;color:#7dd3fc;font-size:14px;letter-spacing:.05em}
+.ox-top select,.ox-top button{padding:4px 7px;font-size:12px}
+#oxText{font-size:13.5px;line-height:1.52;overflow-y:auto;min-height:64px;color:#f1f5f9}
+#oxNote{font-size:10.5px;color:var(--mut)}
+.ox-nav{display:flex;gap:6px;align-items:center;justify-content:space-between}
+.ox-hl{box-shadow:0 0 0 2px #7dd3fc inset,0 0 0 3px #7dd3fc!important;border-radius:8px;animation:oxp 1.4s ease-in-out infinite}
+@keyframes oxp{50%{box-shadow:0 0 0 2px #7dd3fc44 inset,0 0 0 3px #7dd3fc44}}
+@media(max-width:640px){
+  #oxOrb{width:56px;height:56px;right:10px;bottom:calc(var(--ox-b,84px) + 8px)}
+  #oxPanel{right:10px;left:10px;width:auto;max-width:none;bottom:calc(var(--ox-b,84px) + 70px)}
+}
+</style>
+
+<button id="oxOrb" aria-label="Orexis, asistente virtual" title="Orexis · Guía multilingüe"><canvas id="oxCv" width="136" height="136"></canvas></button>
+<section id="oxPanel" aria-live="polite">
+  <div class="ox-top">
+    <b>OREXIS</b>
+    <select id="oxLang" title="Idioma / Language">
+      <option value="es">🇪🇸 Español</option>
+      <option value="en">🇺🇸 English</option>
+      <option value="de">🇩🇪 Deutsch</option>
+      <option value="fr">🇫🇷 Français</option>
+      <option value="pt">🇧🇷 Português</option>
+      <option value="it">🇮🇹 Italiano</option>
+    </select>
+    <button id="oxVoice" title="Activar / desactivar voz">🔊</button>
+    <button id="oxClose" title="Cerrar">✕</button>
+  </div>
+  <div id="oxText"></div>
+  <div id="oxNote"></div>
+  <div class="ox-nav">
+    <button id="oxPrev" title="Anterior">◀</button>
+    <span id="oxStep" class="tag"></span>
+    <button id="oxAgain" title="Repetir explicación">↻</button>
+    <button id="oxNext" class="main" title="Siguiente">▶</button>
+  </div>
+</section>
+
+<script>
+(function(){
+const LC={es:'es-ES',en:'en-US',de:'de-DE',fr:'fr-FR',pt:'pt-BR',it:'it-IT'};
+const TEMAS=[
+{id:'intro',sel:'header h1',
+ es:'Hola, soy Orexis. Aquí ves el fenómeno El Niño: cuando el mar frente a Perú se calienta más de lo normal, cambian las lluvias y las mareas.',
+ en:"Hi, I'm Orexis. This page shows El Niño: when the sea off Peru gets warmer than normal, rainfall and tides change.",
+ de:'Hallo, ich bin Orexis. Hier siehst du El Niño: Wird das Meer vor Peru wärmer als normal, verändern sich Regen und Gezeiten.',
+ fr:"Bonjour, je suis Orexis. Ici, tu vois El Niño : quand la mer au large du Pérou se réchauffe plus que d'habitude, les pluies et les marées changent.",
+ pt:'Olá, eu sou a Orexis. Aqui você vê o El Niño: quando o mar diante do Peru esquenta mais que o normal, chuvas e marés mudam.',
+ it:'Ciao, sono Orexis. Qui vedi El Niño: quando il mare davanti al Perù si scalda più del normale, cambiano piogge e maree.'},
+{id:'mapa',sel:'#wrap',
+ es:'El mapa muestra la temperatura del Pacífico. Los colores cálidos indican agua más caliente de lo normal y los fríos, más fría. Las flechas muestran vientos y corrientes.',
+ en:'The map shows Pacific Ocean temperature. Warm colors mean water hotter than normal, cool colors mean colder. Arrows show winds and currents.',
+ de:'Die Karte zeigt die Temperatur des Pazifiks. Warme Farben bedeuten wärmeres Wasser als normal, kühle kälteres. Pfeile zeigen Winde und Strömungen.',
+ fr:'La carte montre la température du Pacifique. Les couleurs chaudes indiquent une eau plus chaude que la normale, les froides une eau plus froide. Les flèches montrent vents et courants.',
+ pt:'O mapa mostra a temperatura do Pacífico. Cores quentes indicam água mais quente que o normal e frias, mais fria. As setas mostram ventos e correntes.',
+ it:'La mappa mostra la temperatura del Pacifico. I colori caldi indicano acqua più calda del normale, quelli freddi più fredda. Le frecce mostrano venti e correnti.'},
+{id:'indicadores',sel:'.stats',
+ es:'Estos números miden el fenómeno. Niño 3.4 e ICEN son la temperatura del mar respecto a lo normal; si pasan de +0,5 °C, hay un episodio El Niño. SOI mide la presión del aire.',
+ en:'These numbers measure the phenomenon. Niño 3.4 and ICEN are sea temperature compared to normal; above +0.5 °C means an El Niño event. SOI measures air pressure.',
+ de:'Diese Zahlen messen das Phänomen. Niño 3.4 und ICEN zeigen die Meerestemperatur im Vergleich zum Normalwert; über +0,5 °C herrscht El Niño. SOI misst den Luftdruck.',
+ fr:"Ces chiffres mesurent le phénomène. Niño 3.4 et ICEN indiquent la température de la mer par rapport à la normale ; au-dessus de +0,5 °C, c'est El Niño. Le SOI mesure la pression de l'air.",
+ pt:'Esses números medem o fenômeno. Niño 3.4 e ICEN indicam a temperatura do mar em relação ao normal; acima de +0,5 °C há El Niño. O SOI mede a pressão do ar.',
+ it:"Questi numeri misurano il fenomeno. Niño 3.4 e ICEN indicano la temperatura del mare rispetto al normale; oltre +0,5 °C c'è El Niño. Il SOI misura la pressione dell'aria."},
+{id:'lluvia',sel:'.legend',
+ es:'Cada departamento se pinta según la lluvia del mes: azul oscuro es poca y morado es muchísima. Toca cualquier departamento para ver su detalle.',
+ en:'Each department is colored by monthly rainfall: dark blue is little, purple is a lot. Tap any department to see its details.',
+ de:'Jedes Departement ist nach dem Monatsregen eingefärbt: dunkelblau ist wenig, lila sehr viel. Tippe auf ein Departement für Details.',
+ fr:'Chaque département est coloré selon la pluie du mois : bleu foncé, peu ; violet, énormément. Touche un département pour le détail.',
+ pt:'Cada departamento é colorido pela chuva do mês: azul-escuro é pouca e roxo é muitíssima. Toque em um departamento para ver o detalhe.',
+ it:'Ogni dipartimento è colorato in base alla pioggia del mese: blu scuro è poca, viola moltissima. Tocca un dipartimento per i dettagli.'},
+{id:'mareas',sel:'.live-box',
+ es:'Aquí ves en vivo la temperatura del mar y el oleaje en Paita, Callao e Ilo. Con El Niño el nivel del mar sube y las olas crecen en la costa.',
+ en:'Here you see live sea temperature and waves at Paita, Callao and Ilo. During El Niño the sea level rises and waves grow along the coast.',
+ de:'Hier siehst du live Meerestemperatur und Wellen in Paita, Callao und Ilo. Bei El Niño steigt der Meeresspiegel und die Wellen werden höher.',
+ fr:'Ici, tu vois en direct la température de la mer et les vagues à Paita, Callao et Ilo. Avec El Niño, le niveau de la mer monte et les vagues grossissent.',
+ pt:'Aqui você vê ao vivo a temperatura do mar e as ondas em Paita, Callao e Ilo. Com o El Niño, o nível do mar sobe e as ondas crescem na costa.',
+ it:'Qui vedi in diretta temperatura del mare e onde a Paita, Callao e Ilo. Con El Niño il livello del mare sale e le onde crescono lungo la costa.'},
+{id:'tiempo',sel:'footer',
+ es:'Con esta barra viajas por los meses del 2000 al 2027. Pulsa play para ver cómo cambia el mar; la zona naranja es pronóstico.',
+ en:'Use this bar to travel through the months from 2000 to 2027. Press play to watch the sea change; the orange zone is forecast.',
+ de:'Mit dieser Leiste reist du durch die Monate von 2000 bis 2027. Drücke Play, um die Veränderung des Meeres zu sehen; der orange Bereich ist Prognose.',
+ fr:'Cette barre te fait voyager dans les mois de 2000 à 2027. Appuie sur lecture pour voir la mer changer ; la zone orange est la prévision.',
+ pt:'Com esta barra você viaja pelos meses de 2000 a 2027. Aperte play para ver o mar mudar; a zona laranja é previsão.',
+ it:'Con questa barra viaggi tra i mesi dal 2000 al 2027. Premi play per vedere il mare cambiare; la zona arancione è previsione.'},
+{id:'ahora',sel:'#status'}
+];
+
+const ST={
+es:['condiciones neutras','El Niño débil','El Niño moderado','El Niño muy fuerte','El Niño costero','La Niña'],
+en:['neutral conditions','weak El Niño','moderate El Niño','very strong El Niño','coastal El Niño','La Niña'],
+de:['neutrale Bedingungen','schwacher El Niño','mäßiger El Niño','sehr starker El Niño','Küsten-El-Niño','La Niña'],
+fr:['conditions neutres','El Niño faible','El Niño modéré','El Niño très fort','El Niño côtier','La Niña'],
+pt:['condições neutras','El Niño fraco','El Niño moderado','El Niño muito forte','El Niño costeiro','La Niña'],
+it:['condizioni neutre','El Niño debole','El Niño moderato','El Niño molto forte','El Niño costiero','La Niña']};
+const KEYS=['neutro','debil','moderado','fuerte','costero','nina'];
+const W={
+es:['Mes','Situación','Lluvia en','Marea'],
+en:['Month','Situation','Rain in','Tide'],
+de:['Monat','Lage','Regen in','Gezeit'],
+fr:['Mois','Situation','Pluie à','Marée'],
+pt:['Mês','Situação','Chuva em','Maré'],
+it:['Mese','Situazione','Pioggia a','Marea']};
+
+let lang='es',voiceOn=true,step=0,spk=false,hl=null;
+const ox=id=>document.getElementById(id), panel=ox('oxPanel');
+try{
+  const saved=localStorage.getItem('oxLang');
+  lang=(saved && LC[saved])?saved:'es';
+  voiceOn=localStorage.getItem('oxVoice')!=='0';
+}catch(e){}
+ox('oxLang').value=lang;
+
+function topic(i){
+  const t=TEMAS[i];
+  if(t.id!=='ahora') return {id:t.id,text:t[lang]};
+  if(typeof DATOS==='undefined'||!DATOS) return {id:'intro',text:TEMAS[0][lang]||''};
+  const m=S.m,a=DATOS.nino34[m],b=DATOS.nino12[m],dom=Math.max(a,b);
+  const rain=(DATOS.lluvias_peru[S.dep]||[])[m]||0, marea=DATOS.marea_cm[m]||0;
+  const depName=S.dep.toLowerCase().replace(/\b\w/g,l=>l.toUpperCase());
+  const k=(b>=1.5&&a<.5)?4:dom>=1.5?3:dom>=1?2:dom>=.5?1:a<=-.5?5:0;
+  const f=v=>(lang==='en'?v.toFixed(1):v.toFixed(1).replace('.',','));
+  const w=W[lang]||W.es, st=(ST[lang]||ST.es)[k];
+  return {
+    id:'ahora-'+KEYS[k],
+    text:`${w[0]}: ${labelOf(m)}. ${w[1]}: ${st} (Niño 3.4: ${f(a)} °C · ICEN: ${f(b)} °C). ${w[2]} ${depName}: ${Math.round(rain)} mm. ${w[3]}: ${marea>=0?'+':''}${Math.round(marea)} cm.`
+  };
+}
+function setSpk(v){spk=v;ox('oxOrb').classList.toggle('spk',v)}
+function stop(){try{speechSynthesis.cancel()}catch(e){} setSpk(false)}
+function note(t){ox('oxNote').textContent=t||''}
+
+function speak(tp){
+  note('');
+  if(!('speechSynthesis' in window)){note('Tu navegador no admite voz.');return}
+  const vs=speechSynthesis.getVoices(), code=LC[lang];
+  const v=vs.find(x=>x.lang.replace('_','-')===code)||vs.find(x=>x.lang.toLowerCase().startsWith(lang));
+  const u=new SpeechSynthesisUtterance(tp.text); u.lang=code; u.rate=.95;
+  if(v) u.voice=v; else if(vs.length) note('Tu dispositivo no tiene voz instalada para este idioma; se muestra el texto.');
+  u.onstart=()=>setSpk(true); u.onend=u.onerror=()=>setSpk(false);
+  speechSynthesis.speak(u);
+}
+
+function show(i, silent=false){
+  step=(i+TEMAS.length)%TEMAS.length;
+  if(!silent) stop();
+  document.querySelectorAll('.ox-hl').forEach(el=>el.classList.remove('ox-hl'));
+  hl=document.querySelector(TEMAS[step].sel);
+  if(hl){hl.classList.add('ox-hl');hl.scrollIntoView({block:'nearest',behavior:'smooth'})}
+  const tp=topic(step);
+  ox('oxText').textContent=tp.text;
+  ox('oxStep').textContent=(step+1)+' / '+TEMAS.length;
+  if(!silent && voiceOn) speak(tp); else if(!silent) note('');
+}
+
+function closeP(){panel.classList.remove('open');stop();document.querySelectorAll('.ox-hl').forEach(el=>el.classList.remove('ox-hl'))}
+function syncVoiceBtn(){ox('oxVoice').textContent=voiceOn?'🔊':'🔇'}
+syncVoiceBtn();
+
+ox('oxOrb').onclick=()=>{ if(panel.classList.contains('open')) closeP(); else {panel.classList.add('open');show(0)} };
+ox('oxClose').onclick=closeP;
+ox('oxPrev').onclick=()=>show(step-1);
+ox('oxNext').onclick=()=>show(step+1);
+ox('oxAgain').onclick=()=>show(step);
+ox('oxVoice').onclick=()=>{voiceOn=!voiceOn;try{localStorage.setItem('oxVoice',voiceOn?'1':'0')}catch(e){} syncVoiceBtn(); voiceOn?show(step):(stop(),note(''))};
+ox('oxLang').onchange=e=>{lang=e.target.value;try{localStorage.setItem('oxLang',lang)}catch(x){} show(step)};
+if('speechSynthesis' in window) speechSynthesis.onvoiceschanged=()=>{};
+
+const origRender = window.render;
+window.render = function(){
+  origRender();
+  if(panel.classList.contains('open') && TEMAS[step].id==='ahora') show(step, true);
+};
+
+const ft=document.querySelector('footer');
+new ResizeObserver(()=>document.documentElement.style.setProperty('--ox-b',ft.offsetHeight+'px')).observe(ft);
+
+const g=ox('oxCv').getContext('2d'),P=[];
+for(let i=0;i<64;i++){const y=1-2*(i+.5)/64,r=Math.sqrt(1-y*y),t=i*2.399963;P.push([Math.cos(t)*r,y,Math.sin(t)*r])}
+let ang=0;
+(function loop(){
+  const c=68,R=58*(spk?1+.04*Math.sin(Date.now()/120):1);
+  g.clearRect(0,0,136,136);
+  const gr=g.createRadialGradient(c-18,c-20,6,c,c,R);gr.addColorStop(0,'#cfd6de');gr.addColorStop(1,'#59626f');
+  g.fillStyle=gr;g.beginPath();g.arc(c,c,R,0,7);g.fill();
+  ang+=spk?.035:.008;const ca=Math.cos(ang),sa=Math.sin(ang);
+  P.forEach(([x,y,z])=>{const X=x*ca+z*sa,Z=-x*sa+z*ca;if(Z<-.1)return;
+    g.fillStyle=`rgba(125,211,252,${.35+.65*Z})`;g.beginPath();g.arc(c+X*R*.94,c+y*R*.94,1.2+1.8*Z,0,7);g.fill()});
+  requestAnimationFrame(loop);
+})();
+})();
+</script>
 </body>
 </html>
