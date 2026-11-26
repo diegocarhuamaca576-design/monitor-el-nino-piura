@@ -194,8 +194,9 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
     <div>
       <h2>Capas Dinámicas</h2>
       <label class="opt"><input type="checkbox" id="chkPeru" checked> Lluvias por Departamento (24)</label>
+      <label class="opt"><input type="checkbox" id="chkWorld" checked> Países, fronteras y capitales</label>
       <label class="opt"><input type="checkbox" id="chkTide" checked> Boyas Marea y Oleaje (5 Puertos)</label>
-      <label class="opt"><input type="checkbox" id="chkHeat" checked> Campo térmico satelital</label>
+      <label class="opt"><input type="checkbox" id="chkHeat" checked> Campo térmico satelital (UHD)</label>
       <label class="opt"><input type="checkbox" id="chkWind" checked> Flujo de vientos y corrientes</label>
       <label class="opt"><input type="checkbox" id="chkVec" checked> Vector Onda Kelvin → Perú</label>
     </div>
@@ -238,7 +239,16 @@ const $ = id => document.getElementById(id);
 
 let DATOS = null, N = 0, FC0 = 0, MAX_HIST = 0, START_YEAR = 2000;
 const S = { m: 0, v: 'anom', dep: 'PIURA', playing: false, timer: null };
-const isMobile = window.innerWidth <= 640;
+
+const vw = window.innerWidth;
+const isMobile = vw <= 640;
+const isTablet = vw > 640 && vw <= 1024;
+
+/* ===== MÁXIMA RESOLUCIÓN ADAPTATIVA (PC: 2160x1080 | Tablet: 1440x720 | Móvil: 1080x540) ===== */
+const GRID_W = isMobile ? 1080 : (isTablet ? 1440 : 2160);
+const GRID_H = isMobile ? 540  : (isTablet ? 720  : 1080);
+const SPHERE_SEG_W = isMobile ? 80 : (isTablet ? 96 : 128);
+const SPHERE_SEG_H = isMobile ? 54 : (isTablet ? 64 : 96);
 
 const PUERTOS = [
   { name: 'Paita / Talara (Norte)', lat: -5.09, lng: -81.15, factor: 1.25 },
@@ -248,16 +258,128 @@ const PUERTOS = [
   { name: 'Ilo (Sur)', lat: -17.64, lng: -71.36, factor: 0.65 }
 ];
 
-/* ===== MÁSCARA MUNDIAL REAL DE CONTINENTES E ISLAS (720x360 = 0.5°) ===== */
-const GRID_W = 720, GRID_H = 360;
-const landMask = new Uint8Array(GRID_W * GRID_H); // 1 = tierra, 0 = océano
+/* ===== BASE GLOBAL DE PAÍSES Y CAPITALES (NOMBRES + CAPITALES + JERARQUÍA ZOOM) ===== */
+const WORLD_PLACES = [
+  // Sudamérica y Caribe
+  { name: 'PERÚ', lat: -9.2, lng: -75.0, type: 'country', tier: 1 },
+  { name: '★ Lima', lat: -12.05, lng: -77.04, type: 'capital', tier: 1 },
+  { name: 'BRASIL', lat: -10.5, lng: -53.0, type: 'country', tier: 1 },
+  { name: '★ Brasilia', lat: -15.79, lng: -47.88, type: 'capital', tier: 2 },
+  { name: 'ARGENTINA', lat: -34.5, lng: -64.5, type: 'country', tier: 1 },
+  { name: '★ Buenos Aires', lat: -34.60, lng: -58.38, type: 'capital', tier: 2 },
+  { name: 'CHILE', lat: -31.5, lng: -71.0, type: 'country', tier: 1 },
+  { name: '★ Santiago', lat: -33.45, lng: -70.66, type: 'capital', tier: 2 },
+  { name: 'COLOMBIA', lat: 4.2, lng: -73.5, type: 'country', tier: 1 },
+  { name: '★ Bogotá', lat: 4.71, lng: -74.07, type: 'capital', tier: 2 },
+  { name: 'ECUADOR', lat: -1.5, lng: -78.5, type: 'country', tier: 1 },
+  { name: '★ Quito', lat: -0.18, lng: -78.47, type: 'capital', tier: 2 },
+  { name: 'BOLIVIA', lat: -16.5, lng: -64.5, type: 'country', tier: 1 },
+  { name: '★ La Paz', lat: -16.50, lng: -68.15, type: 'capital', tier: 2 },
+  { name: 'VENEZUELA', lat: 7.0, lng: -66.0, type: 'country', tier: 1 },
+  { name: '★ Caracas', lat: 10.48, lng: -66.90, type: 'capital', tier: 2 },
+  { name: 'PARAGUAY', lat: -23.4, lng: -58.0, type: 'country', tier: 2 },
+  { name: '★ Asunción', lat: -25.26, lng: -57.58, type: 'capital', tier: 3 },
+  { name: 'URUGUAY', lat: -32.8, lng: -56.0, type: 'country', tier: 2 },
+  { name: '★ Montevideo', lat: -34.90, lng: -56.16, type: 'capital', tier: 3 },
+  { name: 'GUYANA', lat: 4.8, lng: -58.9, type: 'country', tier: 3 },
+  { name: 'SURINAM', lat: 4.0, lng: -56.0, type: 'country', tier: 3 },
+  { name: 'CUBA', lat: 21.8, lng: -79.5, type: 'country', tier: 2 },
+  { name: '★ La Habana', lat: 23.11, lng: -82.36, type: 'capital', tier: 3 },
+  // Norteamérica y Centroamérica
+  { name: 'ESTADOS UNIDOS', lat: 39.5, lng: -98.5, type: 'country', tier: 1 },
+  { name: '★ Washington D.C.', lat: 38.90, lng: -77.04, type: 'capital', tier: 2 },
+  { name: 'CANADÁ', lat: 56.0, lng: -106.0, type: 'country', tier: 1 },
+  { name: '★ Ottawa', lat: 45.42, lng: -75.69, type: 'capital', tier: 2 },
+  { name: 'MÉXICO', lat: 23.6, lng: -102.5, type: 'country', tier: 1 },
+  { name: '★ Ciudad de México', lat: 19.43, lng: -99.13, type: 'capital', tier: 2 },
+  { name: 'GUATEMALA', lat: 15.5, lng: -90.3, type: 'country', tier: 2 },
+  { name: 'COSTA RICA', lat: 9.9, lng: -84.1, type: 'country', tier: 2 },
+  { name: 'PANAMÁ', lat: 8.6, lng: -80.2, type: 'country', tier: 2 },
+  { name: '★ C. de Panamá', lat: 8.98, lng: -79.52, type: 'capital', tier: 3 },
+  // Europa
+  { name: 'ESPAÑA', lat: 40.3, lng: -3.7, type: 'country', tier: 1 },
+  { name: '★ Madrid', lat: 40.42, lng: -3.70, type: 'capital', tier: 2 },
+  { name: 'FRANCIA', lat: 46.6, lng: 2.3, type: 'country', tier: 1 },
+  { name: '★ París', lat: 48.85, lng: 2.35, type: 'capital', tier: 2 },
+  { name: 'ALEMANIA', lat: 51.1, lng: 10.4, type: 'country', tier: 1 },
+  { name: '★ Berlín', lat: 52.52, lng: 13.40, type: 'capital', tier: 2 },
+  { name: 'ITALIA', lat: 42.8, lng: 12.6, type: 'country', tier: 1 },
+  { name: '★ Roma', lat: 41.90, lng: 12.49, type: 'capital', tier: 2 },
+  { name: 'REINO UNIDO', lat: 54.0, lng: -2.5, type: 'country', tier: 1 },
+  { name: '★ Londres', lat: 51.50, lng: -0.12, type: 'capital', tier: 2 },
+  { name: 'PORTUGAL', lat: 39.6, lng: -8.0, type: 'country', tier: 2 },
+  { name: '★ Lisboa', lat: 38.72, lng: -9.14, type: 'capital', tier: 3 },
+  { name: 'POLONIA', lat: 52.0, lng: 19.4, type: 'country', tier: 2 },
+  { name: '★ Varsovia', lat: 52.23, lng: 21.01, type: 'capital', tier: 3 },
+  { name: 'UCRANIA', lat: 49.0, lng: 31.4, type: 'country', tier: 2 },
+  { name: '★ Kiev', lat: 50.45, lng: 30.52, type: 'capital', tier: 3 },
+  { name: 'SUECIA', lat: 62.0, lng: 15.5, type: 'country', tier: 2 },
+  { name: '★ Estocolmo', lat: 59.33, lng: 18.07, type: 'capital', tier: 3 },
+  { name: 'NORUEGA', lat: 61.5, lng: 8.5, type: 'country', tier: 2 },
+  { name: '★ Oslo', lat: 59.91, lng: 10.75, type: 'capital', tier: 3 },
+  { name: 'GRECIA', lat: 39.2, lng: 22.0, type: 'country', tier: 2 },
+  { name: '★ Atenas', lat: 37.98, lng: 23.72, type: 'capital', tier: 3 },
+  // Asia y Oceanía
+  { name: 'RUSIA', lat: 61.5, lng: 96.0, type: 'country', tier: 1 },
+  { name: '★ Moscú', lat: 55.75, lng: 37.62, type: 'capital', tier: 2 },
+  { name: 'CHINA', lat: 35.5, lng: 103.5, type: 'country', tier: 1 },
+  { name: '★ Pekín', lat: 39.90, lng: 116.40, type: 'capital', tier: 2 },
+  { name: 'JAPÓN', lat: 36.2, lng: 138.2, type: 'country', tier: 1 },
+  { name: '★ Tokio', lat: 35.68, lng: 139.69, type: 'capital', tier: 2 },
+  { name: 'COREA DEL SUR', lat: 36.4, lng: 127.8, type: 'country', tier: 2 },
+  { name: '★ Seúl', lat: 37.56, lng: 126.97, type: 'capital', tier: 3 },
+  { name: 'INDIA', lat: 22.5, lng: 79.0, type: 'country', tier: 1 },
+  { name: '★ Nueva Delhi', lat: 28.61, lng: 77.21, type: 'capital', tier: 2 },
+  { name: 'INDONESIA', lat: -2.2, lng: 117.5, type: 'country', tier: 1 },
+  { name: '★ Yakarta', lat: -6.20, lng: 106.84, type: 'capital', tier: 2 },
+  { name: 'FILIPINAS', lat: 12.5, lng: 122.5, type: 'country', tier: 2 },
+  { name: '★ Manila', lat: 14.60, lng: 120.98, type: 'capital', tier: 3 },
+  { name: 'TAILANDIA', lat: 15.5, lng: 101.0, type: 'country', tier: 2 },
+  { name: '★ Bangkok', lat: 13.75, lng: 100.50, type: 'capital', tier: 3 },
+  { name: 'VIETNAM', lat: 16.0, lng: 107.8, type: 'country', tier: 2 },
+  { name: '★ Hanói', lat: 21.03, lng: 105.85, type: 'capital', tier: 3 },
+  { name: 'ARABIA SAUDITA', lat: 24.0, lng: 45.0, type: 'country', tier: 1 },
+  { name: '★ Riad', lat: 24.71, lng: 46.67, type: 'capital', tier: 2 },
+  { name: 'TURQUÍA', lat: 39.0, lng: 35.2, type: 'country', tier: 2 },
+  { name: '★ Ankara', lat: 39.93, lng: 32.85, type: 'capital', tier: 3 },
+  { name: 'IRÁN', lat: 32.5, lng: 53.7, type: 'country', tier: 2 },
+  { name: '★ Teherán', lat: 35.69, lng: 51.39, type: 'capital', tier: 3 },
+  { name: 'AUSTRALIA', lat: -25.0, lng: 134.0, type: 'country', tier: 1 },
+  { name: '★ Canberra', lat: -35.28, lng: 149.13, type: 'capital', tier: 2 },
+  { name: 'NUEVA ZELANDA', lat: -41.5, lng: 173.0, type: 'country', tier: 1 },
+  { name: '★ Wellington', lat: -41.29, lng: 174.78, type: 'capital', tier: 2 },
+  // África
+  { name: 'EGIPTO', lat: 26.8, lng: 30.8, type: 'country', tier: 1 },
+  { name: '★ El Cairo', lat: 30.04, lng: 31.23, type: 'capital', tier: 2 },
+  { name: 'MARRUECOS', lat: 31.8, lng: -7.1, type: 'country', tier: 2 },
+  { name: '★ Rabat', lat: 34.02, lng: -6.84, type: 'capital', tier: 3 },
+  { name: 'ARGELIA', lat: 28.0, lng: 2.6, type: 'country', tier: 2 },
+  { name: '★ Argel', lat: 36.75, lng: 3.06, type: 'capital', tier: 3 },
+  { name: 'NIGERIA', lat: 9.5, lng: 8.0, type: 'country', tier: 1 },
+  { name: '★ Abuya', lat: 9.07, lng: 7.40, type: 'capital', tier: 2 },
+  { name: 'KENIA', lat: 0.4, lng: 37.8, type: 'country', tier: 2 },
+  { name: '★ Nairobi', lat: -1.29, lng: 36.82, type: 'capital', tier: 3 },
+  { name: 'ETIOPÍA', lat: 9.0, lng: 39.5, type: 'country', tier: 2 },
+  { name: '★ Adís Abeba', lat: 9.03, lng: 38.74, type: 'capital', tier: 3 },
+  { name: 'R.D. DEL CONGO', lat: -2.8, lng: 23.6, type: 'country', tier: 2 },
+  { name: '★ Kinsasa', lat: -4.32, lng: 15.31, type: 'capital', tier: 3 },
+  { name: 'SUDÁFRICA', lat: -29.0, lng: 24.5, type: 'country', tier: 1 },
+  { name: '★ Pretoria', lat: -25.75, lng: 28.19, type: 'capital', tier: 2 },
+  { name: 'MADAGASCAR', lat: -19.5, lng: 46.7, type: 'country', tier: 2 },
+  { name: '★ Antananarivo', lat: -18.88, lng: 47.51, type: 'capital', tier: 3 }
+];
 
-async function buildGlobalLandMask() {
+/* ===== MÁSCARA DE CONTINENTES E ISLAS ALTA DEFINICIÓN (50m) + FRONTERAS ===== */
+const landMask = new Uint8Array(GRID_W * GRID_H);
+let worldBorderPaths = [];
+
+async function loadWorldCartography() {
   try {
-    const res = await fetch('https://unpkg.com/world-atlas@2.0.2/land-110m.json');
+    const res = await fetch('https://unpkg.com/world-atlas@2.0.2/countries-50m.json');
     const topo = await res.json();
-    const landGeo = topojson.feature(topo, topo.objects.land);
 
+    // 1. Construir máscara exacta de tierras (50m) a máxima resolución
+    const landGeo = topojson.feature(topo, topo.objects.land);
     const mc = document.createElement('canvas');
     mc.width = GRID_W; mc.height = GRID_H;
     const mctx = mc.getContext('2d');
@@ -266,6 +388,9 @@ async function buildGlobalLandMask() {
     mctx.fillStyle = '#fff';
 
     const drawRing = ring => {
+      for (let idx = 1; idx < ring.length; idx++) {
+        if (Math.abs(ring[idx][0] - ring[idx - 1][0]) > 180) return;
+      }
       mctx.beginPath();
       ring.forEach(([lon, lat], idx) => {
         const x = (lon + 180) / 360 * GRID_W;
@@ -289,13 +414,34 @@ async function buildGlobalLandMask() {
     for (let p = 0; p < GRID_W * GRID_H; p++) {
       landMask[p] = data[p * 4] > 128 ? 1 : 0;
     }
+
+    // 2. Extraer fronteras políticas internacionales (mesh de países)
+    const mesh = topojson.mesh(topo, topo.objects.countries, (a, b) => a !== b);
+    const paths = [];
+    if (mesh && mesh.coordinates) {
+      mesh.coordinates.forEach(line => {
+        if (line.length < 2) return;
+        let seg = [[line[0][1], line[0][0]]];
+        for (let i = 1; i < line.length; i++) {
+          if (Math.abs(line[i][0] - line[i - 1][0]) > 180) {
+            if (seg.length > 1) paths.push(seg);
+            seg = [[line[i][1], line[i][0]]];
+          } else {
+            seg.push([line[i][1], line[i][0]]);
+          }
+        }
+        if (seg.length > 1) paths.push(seg);
+      });
+    }
+    worldBorderPaths = paths;
+    updateWorldOverlay();
     if (DATOS) updateHeatSphereTexture();
   } catch (e) {
-    console.warn('No se pudo cargar máscara global de tierras:', e);
+    console.warn('Error cargando cartografía global 50m:', e);
   }
 }
 
-/* ===== MOTOR TÉRMICO OCEÁNICO GLOBAL (360° SIN CORTES NI INVASIÓN DE CONTINENTES) ===== */
+/* ===== MOTOR TÉRMICO OCEÁNICO GLOBAL UHD (CON PRE-CÁLCULO VECTORIZADO) ===== */
 const RAMPS = {
   anom:{min:-2.5,max:4.5,title:'Anomalía TSM Global / Pacífico (°C)',stops:[[-2.5,'#1e3a8a'],[-1.2,'#3b82f6'],[-0.4,'#93c5fd'],[0,'#1e293b'],[0.5,'#fde047'],[1.5,'#f97316'],[2.8,'#dc2626'],[4.5,'#7f1d1d']]},
   sst: {min:10,max:31,title:'Temperatura Superficial del Mar (°C)',stops:[[10,'#1e3a8a'],[17,'#0284c7'],[22,'#06b6d4'],[25,'#84cc16'],[28,'#eab308'],[30,'#f97316'],[31,'#b91c1c']]}
@@ -324,44 +470,25 @@ function southAmericaCoastLon(lat) {
   return null;
 }
 
-function evalGlobalOceanPoint(lon, lat, m) {
-  const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
-  const season = 1.6 * (lat / 35) * Math.cos(2 * Math.PI * (mo - 7.5) / 12);
+// Pre-tablas por latitud y longitud para acelerar renderizado a 2160x1080
+const LONS = new Float32Array(GRID_W);
+const L_PAC = new Float32Array(GRID_W);
+const EAST_WEDGE = new Float32Array(GRID_W);
+const EXP_E34_L = new Float32Array(GRID_W);
+const EXP_WP_L = new Float32Array(GRID_W);
+const EXP_E12_L = new Float32Array(GRID_W);
+const COS_OTHER_L = new Float32Array(GRID_W);
 
-  // Detectar si el punto está en la cuenca del Océano Pacífico (120°E hacia el este hasta la costa americana)
-  const saCoast = southAmericaCoastLon(lat);
-  const americasWestBound = lat > 7.5 ? (-78.0 - (lat - 7.5) * 1.65) : (saCoast !== null ? saCoast : -75.0);
-  const inPacificBasin = (lon >= 120) || (lon < americasWestBound);
-
-  if (inPacificBasin) {
-    let L = lon > 0 ? lon - 360 : lon;
-    const eastWedge = Math.min(1, Math.max(0, (L + 195) / 115));
-    const meridionalWidth = 4.2 + 4.8 * eastWedge;
-    const eqBand = Math.exp(-Math.pow(lat / meridionalWidth, 2));
-    const tiw = 0.28 * Math.sin(L * 0.38 + m * 1.15) * Math.exp(-Math.pow((lat - 2.4) / 2.6, 2));
-
-    const refCoast = saCoast !== null ? saCoast : -80.5;
-    const distOffshore = Math.max(0, refCoast - L);
-    const latPeruFactor = Math.exp(-Math.pow((lat + 7.2) / 7.8, 2)) * (lat <= 1.5 && lat >= -20 ? 1 : 0.15);
-    const coastalStrip = Math.exp(-Math.pow(distOffshore / (2.6 + 1.8 * Math.exp(-Math.pow((lat + 5) / 4, 2))), 2)) * latPeruFactor;
-
-    const humboldt = -2.6 * coastalStrip;
-    const clim = 29.0 - 0.0055 * lat * lat - 2.8 * eastWedge * eqBand + humboldt + season;
-
-    let a = e34 * (Math.exp(-Math.pow((L + 132) / 42, 2)) * eqBand - 0.35 * Math.exp(-Math.pow((L + 210) / 24, 2) - Math.pow(lat / 14, 2)));
-    a += e12 * (1.05 * coastalStrip + 0.42 * Math.exp(-Math.pow((L + 87) / 9, 2) - Math.pow((lat + 2.5) / 4.5, 2)));
-    a += tiw * Math.max(0.25, Math.abs(e34));
-    a += 0.16 * Math.sin(L * 0.27 + m * 0.55) * Math.cos(lat * 0.34 - m * 0.3);
-
-    return { anom: a, sst: clim + a };
-  }
-
-  // Océanos Atlántico e Índico (teleconexión ENSO suavizada + climatología latitudinal global)
-  const climOther = 28.4 - 0.0058 * lat * lat + season;
-  const tele = e34 * 0.28 * Math.exp(-Math.pow(lat / 16, 2)) * Math.cos((lon - 40) * 0.045);
-  const wave = 0.18 * Math.sin(lon * 0.18 + m * 0.4) * Math.cos(lat * 0.25);
-  const aOther = tele + wave;
-  return { anom: aOther, sst: climOther + aOther };
+for (let i = 0; i < GRID_W; i++) {
+  const lon = -180 + (i + 0.5) * (360 / GRID_W);
+  LONS[i] = lon;
+  const L = lon > 0 ? lon - 360 : lon;
+  L_PAC[i] = L;
+  EAST_WEDGE[i] = Math.min(1, Math.max(0, (L + 195) / 115));
+  EXP_E34_L[i] = Math.exp(-Math.pow((L + 132) / 42, 2));
+  EXP_WP_L[i]  = Math.exp(-Math.pow((L + 210) / 24, 2));
+  EXP_E12_L[i] = Math.exp(-Math.pow((L + 87) / 9, 2));
+  COS_OTHER_L[i] = Math.cos((lon - 40) * 0.045);
 }
 
 const texCanvas = document.createElement('canvas');
@@ -369,35 +496,87 @@ texCanvas.width = GRID_W; texCanvas.height = GRID_H;
 const tctx = texCanvas.getContext('2d');
 const heatTexture = new THREE.CanvasTexture(texCanvas);
 heatTexture.colorSpace = THREE.SRGBColorSpace;
+heatTexture.minFilter = THREE.LinearFilter;
+heatTexture.magFilter = THREE.LinearFilter;
 
 let heatMesh = null;
 
 function updateHeatSphereTexture() {
   if (!DATOS) return;
+  const m = S.m;
   const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
+  const isSst = S.v === 'sst';
+  const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
+  const seasonCos = Math.cos(2 * Math.PI * (mo - 7.5) / 12);
+  const tiwAmp = 0.28 * Math.max(0.25, Math.abs(e34));
+  const invRange = 511 / (r.max - r.min);
+  const lut = r.lut;
+
   const img = tctx.createImageData(GRID_W, GRID_H);
+  const out = img.data;
 
   for (let j = 0; j < GRID_H; j++) {
     const lat = 90 - (j + 0.5) * (180 / GRID_H);
-    // Difuminado suave hacia los polos (de ±58° a ±68°)
-    const polarFade = Math.abs(lat) > 68 ? 0 : Math.min(1, (68 - Math.abs(lat)) / 10);
+    const absLat = Math.abs(lat);
+    if (absLat > 68) continue;
+
+    const polarFade = Math.min(1, (68 - absLat) / 10);
+    const season = 1.6 * (lat / 35) * seasonCos;
+    const latSq = lat * lat;
+    const saCoast = southAmericaCoastLon(lat);
+    const americasWestBound = lat > 7.5 ? (-78.0 - (lat - 7.5) * 1.65) : (saCoast !== null ? saCoast : -75.0);
+    const refCoast = saCoast !== null ? saCoast : -80.5;
+
+    const latPeruFactor = Math.exp(-Math.pow((lat + 7.2) / 7.8, 2)) * (lat <= 1.5 && lat >= -20 ? 1 : 0.15);
+    const stripWidth = 2.6 + 1.8 * Math.exp(-Math.pow((lat + 5) / 4, 2));
+    const tiwLat = Math.exp(-Math.pow((lat - 2.4) / 2.6, 2));
+    const wpLat = Math.exp(-Math.pow(lat / 14, 2));
+    const e12Lat = Math.exp(-Math.pow((lat + 2.5) / 4.5, 2));
+    const teleOtherLat = e34 * 0.28 * Math.exp(-Math.pow(lat / 16, 2));
+    const waveCosLat = 0.18 * Math.cos(lat * 0.25);
+    const wavePacCosLat = 0.16 * Math.cos(lat * 0.34 - m * 0.3);
+    const climOtherBase = 28.4 - 0.0058 * latSq + season;
+
+    const rowOffset = j * GRID_W;
     for (let i = 0; i < GRID_W; i++) {
-      const p = j * GRID_W + i;
-      const k = p * 4;
-      // Si es tierra según el mapa mundial real, dejar transparente
-      if (landMask[p] === 1 || polarFade <= 0.01) {
-        img.data[k + 3] = 0;
-        continue;
+      const p = rowOffset + i;
+      if (landMask[p] === 1) continue;
+
+      const lon = LONS[i];
+      let val;
+
+      if (lon >= 120 || lon < americasWestBound) {
+        const L = L_PAC[i];
+        const ew = EAST_WEDGE[i];
+        const mWidth = 4.2 + 4.8 * ew;
+        const eqBand = Math.exp(-(latSq) / (mWidth * mWidth));
+        const distOffshore = Math.max(0, refCoast - L);
+        const coastalStrip = Math.exp(-Math.pow(distOffshore / stripWidth, 2)) * latPeruFactor;
+
+        let a = e34 * (EXP_E34_L[i] * eqBand - 0.35 * EXP_WP_L[i] * wpLat);
+        a += e12 * (1.05 * coastalStrip + 0.42 * EXP_E12_L[i] * e12Lat);
+        a += tiwAmp * Math.sin(L * 0.38 + m * 1.15) * tiwLat;
+        a += Math.sin(L * 0.27 + m * 0.55) * wavePacCosLat;
+
+        if (isSst) {
+          const clim = 29.0 - 0.0055 * latSq - 2.8 * ew * eqBand - 2.6 * coastalStrip + season;
+          val = clim + a;
+        } else {
+          val = a;
+        }
+      } else {
+        const aOther = teleOtherLat * COS_OTHER_L[i] + Math.sin(lon * 0.18 + m * 0.4) * waveCosLat;
+        val = isSst ? (climOtherBase + aOther) : aOther;
       }
-      const lon = -180 + (i + 0.5) * (360 / GRID_W);
-      const res = evalGlobalOceanPoint(lon, lat, S.m);
-      const val = S.v === 'sst' ? res.sst : res.anom;
-      const idx = Math.min(511, Math.max(0, Math.floor((val - r.min) / (r.max - r.min) * 511)));
-      img.data[k]     = r.lut[idx * 3];
-      img.data[k + 1] = r.lut[idx * 3 + 1];
-      img.data[k + 2] = r.lut[idx * 3 + 2];
-      const baseAlpha = S.v === 'sst' ? 125 : Math.min(205, Math.max(14, Math.abs(val) * 105));
-      img.data[k + 3] = Math.round(baseAlpha * polarFade);
+
+      const idx = Math.min(511, Math.max(0, ((val - r.min) * invRange) | 0));
+      const cIdx = idx * 3;
+      const k = p * 4;
+      out[k]     = lut[cIdx];
+      out[k + 1] = lut[cIdx + 1];
+      out[k + 2] = lut[cIdx + 2];
+      const baseAlpha = isSst ? 128 : Math.min(208, Math.max(14, Math.abs(val) * 105));
+      out[k + 3] = (baseAlpha * polarFade) | 0;
     }
   }
   tctx.putImageData(img, 0, 0);
@@ -405,7 +584,7 @@ function updateHeatSphereTexture() {
   if (heatMesh) heatMesh.visible = $('chkHeat').checked;
 }
 
-/* ===== INICIALIZACIÓN DEL GLOBO TERRÁQUEO 3D ===== */
+/* ===== INICIALIZACIÓN DEL GLOBO TERRÁQUEO 3D UHD ===== */
 const wrapEl = $('wrap');
 const world = Globe()( $('globeViz') )
   .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
@@ -418,8 +597,13 @@ const world = Globe()( $('globeViz') )
   .height(wrapEl.clientHeight);
 
 setTimeout(() => {
+  const renderer = world.renderer();
+  if (renderer) {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
+    heatTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  }
   const globeRadius = world.getGlobeRadius();
-  const geo = new THREE.SphereGeometry(globeRadius * 1.004, 96, 64);
+  const geo = new THREE.SphereGeometry(globeRadius * 1.004, SPHERE_SEG_W, SPHERE_SEG_H);
   const mat = new THREE.MeshBasicMaterial({
     map: heatTexture,
     transparent: true,
@@ -433,6 +617,56 @@ setTimeout(() => {
 
 world.pointOfView({ lat: -9.5, lng: -86, altitude: isMobile ? 1.55 : 1.15 }, 0);
 
+/* ===== FRONTERAS INTERNACIONALES Y ETIQUETAS DE PAÍSES / CAPITALES ===== */
+let currentMaxTier = 2;
+
+function getVisiblePlaces() {
+  if (!$('chkWorld').checked) return [];
+  return WORLD_PLACES.filter(p => p.tier <= currentMaxTier);
+}
+
+world
+  .pathsData([])
+  .pathPoints(d => d)
+  .pathPointLat(p => p[0])
+  .pathPointLng(p => p[1])
+  .pathPointAlt(0.0055)
+  .pathColor(() => 'rgba(226, 232, 240, 0.34)')
+  .pathStroke(isMobile ? 0.35 : 0.45)
+  .pathTransitionDuration(0);
+
+world
+  .labelsData([])
+  .labelLat('lat')
+  .labelLng('lng')
+  .labelText('name')
+  .labelSize(d => d.type === 'country' ? (isMobile ? 0.85 : 0.72) : (isMobile ? 0.62 : 0.50))
+  .labelDotRadius(d => d.type === 'capital' ? 0.24 : 0)
+  .labelColor(d => d.type === 'country' ? 'rgba(248, 250, 252, 0.90)' : '#fbbf24')
+  .labelAltitude(0.011)
+  .labelResolution(3)
+  .labelIncludeDot(true)
+  .labelsTransitionDuration(0);
+
+function updateWorldOverlay() {
+  const showWorld = $('chkWorld').checked;
+  world.pathsData(showWorld ? worldBorderPaths : []);
+  world.labelsData(getVisiblePlaces());
+}
+
+// Actualizar nivel de detalle de nombres y capitales dinámicamente al hacer zoom
+const controls = world.controls();
+if (controls) {
+  controls.addEventListener('change', () => {
+    const alt = world.pointOfView().altitude || 1.5;
+    const newTier = alt > 1.75 ? 1 : (alt > 0.95 ? 2 : 3);
+    if (newTier !== currentMaxTier) {
+      currentMaxTier = newTier;
+      if ($('chkWorld').checked) world.labelsData(getVisiblePlaces());
+    }
+  });
+}
+
 let peruFeatures = [];
 function rainColor(mm) {
   if (mm >= 320) return 'rgba(168, 85, 247, 0.72)';
@@ -445,7 +679,7 @@ function rainColor(mm) {
 world
   .polygonAltitude(d => {
     const name = (d.properties.NOMBDEP || '').toUpperCase().trim();
-    return name === S.dep ? 0.014 : 0.007;
+    return name === S.dep ? 0.015 : 0.008;
   })
   .polygonCapColor(d => {
     if (!DATOS || !$('chkPeru').checked) return 'rgba(0,0,0,0)';
@@ -490,7 +724,7 @@ async function loadPeruDepartments() {
 world
   .pointLat('lat')
   .pointLng('lng')
-  .pointAltitude(0.016)
+  .pointAltitude(0.017)
   .pointRadius(isMobile ? 0.55 : 0.45)
   .pointColor(p => {
     if (!DATOS) return '#38bdf8';
@@ -682,7 +916,7 @@ async function fetchLivePeruMarine() {
 }
 
 async function initApp() {
-  buildGlobalLandMask();
+  loadWorldCartography();
   loadPeruDepartments();
   try {
     const res = await fetch('./datos_monitor.json?v=' + Date.now());
@@ -717,6 +951,7 @@ $('selDep').onchange = e => { S.dep = e.target.value; render(); };
 $('btnZoomPeru').onclick = () => world.pointOfView({ lat: -9.5, lng: -76.5, altitude: isMobile ? 1.15 : 0.85 }, 1100);
 $('btnZoomPac').onclick  = () => world.pointOfView({ lat: -4.0, lng: -125.0, altitude: isMobile ? 2.1 : 1.75 }, 1100);
 $('chkPeru').onchange = render;
+$('chkWorld').onchange = updateWorldOverlay;
 $('chkTide').onchange = render;
 $('chkHeat').onchange = () => { if (heatMesh) heatMesh.visible = $('chkHeat').checked; };
 $('chkWind').onchange = updateGlobeVectors;
