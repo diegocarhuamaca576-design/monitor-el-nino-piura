@@ -1084,21 +1084,126 @@ const TEMAS=[
 {id:'ahora',sel:'#status'}
 ];
 
-const ST={
-es:['condiciones neutras','El Niño débil','El Niño moderado','El Niño muy fuerte','El Niño costero','La Niña'],
-en:['neutral conditions','weak El Niño','moderate El Niño','very strong El Niño','coastal El Niño','La Niña'],
-de:['neutrale Bedingungen','schwacher El Niño','mäßiger El Niño','sehr starker El Niño','Küsten-El-Niño','La Niña'],
-fr:['conditions neutres','El Niño faible','El Niño modéré','El Niño très fort','El Niño côtier','La Niña'],
-pt:['condições neutras','El Niño fraco','El Niño moderado','El Niño muito forte','El Niño costeiro','La Niña'],
-it:['condizioni neutre','El Niño debole','El Niño moderato','El Niño molto forte','El Niño costiero','La Niña']};
+/* Temperatura base anual promedio (°C) por departamento para traducir a clima cotidiano */
+const DEP_TEMP = {
+  TUMBES:27, PIURA:26, LAMBAYEQUE:24, 'LA LIBERTAD':22, ANCASH:19, LIMA:20, CALLAO:20, ICA:22,
+  AREQUIPA:18, MOQUEGUA:19, TACNA:19, CAJAMARCA:17, AMAZONAS:22, 'SAN MARTIN':27, LORETO:28,
+  UCAYALI:28, HUANUCO:21, PASCO:13, JUNIN:15, HUANCAVELICA:13, AYACUCHO:17, APURIMAC:16,
+  CUSCO:14, PUNO:11
+};
+
+const TXT_SIMPLE = {
+  es: {
+    rain: [
+      'Casi no lloverá; predominará el sol o cielo despejado.',
+      'Habrá lluvias ligeras o pasajeras, con ratos de sol.',
+      'Lloverá moderadamente a fuerte; conviene llevar paraguas.',
+      'Lloverá muy fuerte (alerta por lluvias intensas y crecida de ríos).'
+    ],
+    sea: [
+      'El clima y el mar están normales y tranquilos.',
+      'Hay El Niño débil: el mar está algo tibio, pero sin cambios extremos.',
+      'Hay El Niño moderado: sube el calor en la costa y el oleaje.',
+      'Hay El Niño muy fuerte: el mar está muy caliente y la marea está alta en la costa.',
+      'Hay El Niño Costero: el mar frente a Perú está muy caliente y provoca lluvias en el norte.',
+      'Hay La Niña: el mar está más frío de lo normal y hace más fresco en la costa.'
+    ],
+    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
+      `En ${mes}, en ${dep} estamos alrededor de ${temp} °C. ${lluviaTxt} ${marTxt}`
+  },
+  en: {
+    rain: [
+      'Almost no rain; mostly sunny or clear skies.',
+      'Light, passing showers with sunny breaks.',
+      'Moderate to heavy rain; bring an umbrella.',
+      'Very heavy rain (high risk of flooding and landslides).'
+    ],
+    sea: [
+      'Weather and sea conditions are normal and calm.',
+      'Weak El Niño: the sea is slightly warmer than usual.',
+      'Moderate El Niño: warmer coast and higher ocean swells.',
+      'Very strong El Niño: the ocean is much hotter and coastal tides are high.',
+      'Coastal El Niño: the sea off Peru is very warm, bringing heavy rain to the north.',
+      'La Niña: the sea is cooler than normal, making the coast fresher.'
+    ],
+    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
+      `In ${mes}, ${dep} is around ${temp} °C. ${lluviaTxt} ${marTxt}`
+  },
+  de: {
+    rain: [
+      'Kaum Regen; überwiegend sonnig oder klar.',
+      'Leichte, kurze Schauer mit sonnigen Abschnitten.',
+      'Mäßiger bis starker Regen; Regenschirm mitnehmen.',
+      'Sehr starker Regen (hohes Risiko für Überschwemmungen).'
+    ],
+    sea: [
+      'Wetter und Meer sind normal und ruhig.',
+      'Schwacher El Niño: Das Meer ist etwas wärmer als üblich.',
+      'Mäßiger El Niño: Wärmere Küste und stärkerer Wellengang.',
+      'Sehr starker El Niño: Das Meer ist stark aufgeheizt und die Gezeiten sind hoch.',
+      'Küsten-El-Niño: Das Meer vor Peru ist sehr warm und bringt Regen im Norden.',
+      'La Niña: Das Meer ist kühler als normal, an der Küste ist es frischer.'
+    ],
+    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
+      `Im ${mes} liegen die Temperaturen in ${dep} bei etwa ${temp} °C. ${lluviaTxt} ${marTxt}`
+  },
+  fr: {
+    rain: [
+      'Presque pas de pluie ; temps ensoleillé ou dégagé.',
+      'Petites averses passagères avec des éclaircies.',
+      'Pluies modérées à fortes ; prévoyez un parapluie.',
+      'Pluies très fortes (risque élevé d’inondations).'
+    ],
+    sea: [
+      'La météo et la mer sont normales et calmes.',
+      'El Niño faible : la mer est légèrement plus chaude.',
+      'El Niño modéré : chaleur accrue sur la côte et houle plus forte.',
+      'El Niño très fort : la mer est très chaude et la marée est haute.',
+      'El Niño côtier : la mer au large du Pérou est très chaude avec de fortes pluies au nord.',
+      'La Niña : la mer est plus froide que la normale et la côte est plus fraîche.'
+    ],
+    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
+      `En ${mes}, il fait environ ${temp} °C à ${dep}. ${lluviaTxt} ${marTxt}`
+  },
+  pt: {
+    rain: [
+      'Quase não vai chover; predomina o sol ou céu aberto.',
+      'Chuvas leves e passageiras, com períodos de sol.',
+      'Vai chover de moderado a forte; leve guarda-chuva.',
+      'Vai chover muito forte (alerta para chuvas intensas).'
+    ],
+    sea: [
+      'O clima e o mar estão normais e tranquilos.',
+      'El Niño fraco: o mar está um pouco mais quente que o normal.',
+      'El Niño moderado: mais calor no litoral e ondas maiores.',
+      'El Niño muito forte: o mar está bem quente e a maré está alta na costa.',
+      'El Niño Costeiro: o mar diante do Peru está muito quente com chuvas no norte.',
+      'La Niña: o mar está mais frio que o normal e o litoral fica mais fresco.'
+    ],
+    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
+      `Em ${mes}, ${dep} está por volta de ${temp} °C. ${lluviaTxt} ${marTxt}`
+  },
+  it: {
+    rain: [
+      'Quasi niente pioggia; prevale il sole o cielo sereno.',
+      'Piogge leggere e passeggere con schiarite.',
+      'Pioverà da moderato a forte; meglio portare l’ombrello.',
+      'Pioverà molto forte (allerta per piogge intense).'
+    ],
+    sea: [
+      'Il clima e il mare sono normali e calmi.',
+      'El Niño debole: il mare è leggermente più caldo del solito.',
+      'El Niño moderato: più caldo sulla costa e mare mosso.',
+      'El Niño molto forte: il mare è molto caldo e l’alta marea è marcata.',
+      'El Niño costiero: il mare davanti al Perù è molto caldo con piogge al nord.',
+      'La Niña: il mare è più freddo del normale e la costa è più fresca.'
+    ],
+    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
+      `A ${mes}, a ${dep} ci sono circa ${temp} °C. ${lluviaTxt} ${marTxt}`
+  }
+};
+
 const KEYS=['neutro','debil','moderado','fuerte','costero','nina'];
-const W={
-es:['Mes','Situación','Lluvia en','Marea'],
-en:['Month','Situation','Rain in','Tide'],
-de:['Monat','Lage','Regen in','Gezeit'],
-fr:['Mois','Situation','Pluie à','Marée'],
-pt:['Mês','Situação','Chuva em','Maré'],
-it:['Mese','Situazione','Pioggia a','Marea']};
 
 let lang='es',voiceOn=true,step=0,spk=false,hl=null;
 const ox=id=>document.getElementById(id), panel=ox('oxPanel');
@@ -1113,15 +1218,26 @@ function topic(i){
   const t=TEMAS[i];
   if(t.id!=='ahora') return {id:t.id,text:t[lang]};
   if(typeof DATOS==='undefined'||!DATOS) return {id:'intro',text:TEMAS[0][lang]||''};
-  const m=S.m,a=DATOS.nino34[m],b=DATOS.nino12[m],dom=Math.max(a,b);
-  const rain=(DATOS.lluvias_peru[S.dep]||[])[m]||0, marea=DATOS.marea_cm[m]||0;
+
+  const m=S.m, a=DATOS.nino34[m], b=DATOS.nino12[m], dom=Math.max(a,b);
+  const rain=(DATOS.lluvias_peru[S.dep]||[])[m]||0;
+  const depKey=S.dep.toUpperCase().trim();
   const depName=S.dep.toLowerCase().replace(/\b\w/g,l=>l.toUpperCase());
-  const k=(b>=1.5&&a<.5)?4:dom>=1.5?3:dom>=1?2:dom>=.5?1:a<=-.5?5:0;
-  const f=v=>(lang==='en'?v.toFixed(1):v.toFixed(1).replace('.',','));
-  const w=W[lang]||W.es, st=(ST[lang]||ST.es)[k];
+
+  // Estimar temperatura cotidiana del aire (°C) según departamento, estación y calentamiento El Niño
+  const baseT = DEP_TEMP[depKey] || 21;
+  const mo = m % 12;
+  const estacional = 2.0 * Math.cos(2 * Math.PI * (mo - 1) / 12); // verano austral Ene-Feb (+2°C), invierno Jul-Ago (-2°C)
+  const efectoNino = Math.max(-1.5, Math.min(3.2, b * 0.9));
+  const tempEst = Math.round(baseT + estacional + efectoNino);
+
+  const rIdx = rain < 25 ? 0 : rain < 90 ? 1 : rain < 200 ? 2 : 3;
+  const k = (b>=1.5&&a<.5)?4:dom>=1.5?3:dom>=1?2:dom>=.5?1:a<=-.5?5:0;
+
+  const pack = TXT_SIMPLE[lang] || TXT_SIMPLE.es;
   return {
     id:'ahora-'+KEYS[k],
-    text:`${w[0]}: ${labelOf(m)}. ${w[1]}: ${st} (Niño 3.4: ${f(a)} °C · ICEN: ${f(b)} °C). ${w[2]} ${depName}: ${Math.round(rain)} mm. ${w[3]}: ${marea>=0?'+':''}${Math.round(marea)} cm.`
+    text: pack.tpl(labelOf(m), depName, tempEst, pack.rain[rIdx], pack.sea[k])
   };
 }
 function setSpk(v){spk=v;ox('oxOrb').classList.toggle('spk',v)}
