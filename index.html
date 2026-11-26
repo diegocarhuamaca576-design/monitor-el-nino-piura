@@ -85,6 +85,27 @@ canvas#chart{width:100%;height:84px;display:block;cursor:pointer;border-radius:6
   box-shadow:0 8px 20px rgba(0,0,0,.6)!important;
 }
 
+/* Etiquetas HTML UTF-8 proyectadas en el globo */
+.g-lbl{
+  pointer-events:none;
+  user-select:none;
+  white-space:nowrap;
+  transform:translate(-50%,-50%);
+  text-shadow:0 1px 3px rgba(0,0,0,.95), 0 0 6px rgba(0,0,0,.85);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+.g-lbl.country{
+  color:#f8fafc;
+  font-weight:700;
+  font-size:10.5px;
+  letter-spacing:.06em;
+}
+.g-lbl.capital{
+  color:#fbbf24;
+  font-weight:600;
+  font-size:9.5px;
+}
+
 .legend{
   position:absolute;left:12px;bottom:12px;background:rgba(15,23,38,.92);
   backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:9px;
@@ -258,7 +279,7 @@ const PUERTOS = [
   { name: 'Ilo (Sur)', lat: -17.64, lng: -71.36, factor: 0.65 }
 ];
 
-/* ===== BASE GLOBAL DE PAÍSES Y CAPITALES (NOMBRES + CAPITALES + JERARQUÍA ZOOM) ===== */
+/* ===== BASE GLOBAL DE PAÍSES Y CAPITALES (UTF-8 COMPLETO CON TILDES Y SÍMBOLOS) ===== */
 const WORLD_PLACES = [
   // Sudamérica y Caribe
   { name: 'PERÚ', lat: -9.2, lng: -75.0, type: 'country', tier: 1 },
@@ -369,53 +390,32 @@ const WORLD_PLACES = [
   { name: '★ Antananarivo', lat: -18.88, lng: 47.51, type: 'capital', tier: 3 }
 ];
 
-/* ===== MÁSCARA DE CONTINENTES E ISLAS ALTA DEFINICIÓN (50m) + FRONTERAS ===== */
+/* ===== MÁSCARA EXACTA DE OCÉANOS/TIERRAS (EARTH-WATER RASTER) + FRONTERAS 50m ===== */
 const landMask = new Uint8Array(GRID_W * GRID_H);
 let worldBorderPaths = [];
 
-async function loadWorldCartography() {
-  try {
-    const res = await fetch('https://unpkg.com/world-atlas@2.0.2/countries-50m.json');
-    const topo = await res.json();
-
-    // 1. Construir máscara exacta de tierras (50m) a máxima resolución
-    const landGeo = topojson.feature(topo, topo.objects.land);
+function buildRasterLandMask() {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
     const mc = document.createElement('canvas');
     mc.width = GRID_W; mc.height = GRID_H;
     const mctx = mc.getContext('2d');
-    mctx.fillStyle = '#000';
-    mctx.fillRect(0, 0, GRID_W, GRID_H);
-    mctx.fillStyle = '#fff';
-
-    const drawRing = ring => {
-      for (let idx = 1; idx < ring.length; idx++) {
-        if (Math.abs(ring[idx][0] - ring[idx - 1][0]) > 180) return;
-      }
-      mctx.beginPath();
-      ring.forEach(([lon, lat], idx) => {
-        const x = (lon + 180) / 360 * GRID_W;
-        const y = (90 - lat) / 180 * GRID_H;
-        if (idx === 0) mctx.moveTo(x, y);
-        else mctx.lineTo(x, y);
-      });
-      mctx.closePath();
-      mctx.fill();
-    };
-
-    const features = landGeo.type === 'FeatureCollection' ? landGeo.features : [landGeo];
-    features.forEach(f => {
-      const geom = f.geometry;
-      if (!geom) return;
-      if (geom.type === 'Polygon') geom.coordinates.forEach(drawRing);
-      else if (geom.type === 'MultiPolygon') geom.coordinates.forEach(poly => poly.forEach(drawRing));
-    });
-
+    mctx.drawImage(img, 0, 0, GRID_W, GRID_H);
     const data = mctx.getImageData(0, 0, GRID_W, GRID_H).data;
+    // En earth-water.png: blanco/claro = agua (océano), negro/oscuro = tierra firme (continentes)
     for (let p = 0; p < GRID_W * GRID_H; p++) {
-      landMask[p] = data[p * 4] > 128 ? 1 : 0;
+      landMask[p] = data[p * 4] < 128 ? 1 : 0;
     }
+    if (DATOS) updateHeatSphereTexture();
+  };
+  img.src = 'https://unpkg.com/three-globe/example/img/earth-water.png';
+}
 
-    // 2. Extraer fronteras políticas internacionales (mesh de países)
+async function loadWorldBorders() {
+  try {
+    const res = await fetch('https://unpkg.com/world-atlas@2.0.2/countries-50m.json');
+    const topo = await res.json();
     const mesh = topojson.mesh(topo, topo.objects.countries, (a, b) => a !== b);
     const paths = [];
     if (mesh && mesh.coordinates) {
@@ -435,9 +435,8 @@ async function loadWorldCartography() {
     }
     worldBorderPaths = paths;
     updateWorldOverlay();
-    if (DATOS) updateHeatSphereTexture();
   } catch (e) {
-    console.warn('Error cargando cartografía global 50m:', e);
+    console.warn('Error cargando fronteras 50m:', e);
   }
 }
 
@@ -470,7 +469,6 @@ function southAmericaCoastLon(lat) {
   return null;
 }
 
-// Pre-tablas por latitud y longitud para acelerar renderizado a 2160x1080
 const LONS = new Float32Array(GRID_W);
 const L_PAC = new Float32Array(GRID_W);
 const EAST_WEDGE = new Float32Array(GRID_W);
@@ -617,7 +615,7 @@ setTimeout(() => {
 
 world.pointOfView({ lat: -9.5, lng: -86, altitude: isMobile ? 1.55 : 1.15 }, 0);
 
-/* ===== FRONTERAS INTERNACIONALES Y ETIQUETAS DE PAÍSES / CAPITALES ===== */
+/* ===== FRONTERAS INTERNACIONALES Y ETIQUETAS HTML UTF-8 DE PAÍSES / CAPITALES ===== */
 let currentMaxTier = 2;
 
 function getVisiblePlaces() {
@@ -636,25 +634,23 @@ world
   .pathTransitionDuration(0);
 
 world
-  .labelsData([])
-  .labelLat('lat')
-  .labelLng('lng')
-  .labelText('name')
-  .labelSize(d => d.type === 'country' ? (isMobile ? 0.85 : 0.72) : (isMobile ? 0.62 : 0.50))
-  .labelDotRadius(d => d.type === 'capital' ? 0.24 : 0)
-  .labelColor(d => d.type === 'country' ? 'rgba(248, 250, 252, 0.90)' : '#fbbf24')
-  .labelAltitude(0.011)
-  .labelResolution(3)
-  .labelIncludeDot(true)
-  .labelsTransitionDuration(0);
+  .htmlElementsData([])
+  .htmlLat('lat')
+  .htmlLng('lng')
+  .htmlAltitude(0.012)
+  .htmlElement(d => {
+    const el = document.createElement('div');
+    el.className = 'g-lbl ' + d.type;
+    el.textContent = d.name;
+    return el;
+  });
 
 function updateWorldOverlay() {
   const showWorld = $('chkWorld').checked;
   world.pathsData(showWorld ? worldBorderPaths : []);
-  world.labelsData(getVisiblePlaces());
+  world.htmlElementsData(getVisiblePlaces());
 }
 
-// Actualizar nivel de detalle de nombres y capitales dinámicamente al hacer zoom
 const controls = world.controls();
 if (controls) {
   controls.addEventListener('change', () => {
@@ -662,7 +658,7 @@ if (controls) {
     const newTier = alt > 1.75 ? 1 : (alt > 0.95 ? 2 : 3);
     if (newTier !== currentMaxTier) {
       currentMaxTier = newTier;
-      if ($('chkWorld').checked) world.labelsData(getVisiblePlaces());
+      if ($('chkWorld').checked) world.htmlElementsData(getVisiblePlaces());
     }
   });
 }
@@ -916,7 +912,8 @@ async function fetchLivePeruMarine() {
 }
 
 async function initApp() {
-  loadWorldCartography();
+  buildRasterLandMask();
+  loadWorldBorders();
   loadPeruDepartments();
   try {
     const res = await fetch('./datos_monitor.json?v=' + Date.now());
