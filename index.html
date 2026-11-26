@@ -364,13 +364,30 @@ function southAmericaCoastLon(lat) {
   return null;
 }
 
+function isLandPoint(L, lat) {
+  // Sudamérica
+  const saCoast = southAmericaCoastLon(lat);
+  if (saCoast !== null && L > saCoast + 0.35) return true;
+
+  // México y Centroamérica
+  if (lat > 7.5 && lat <= 25) {
+    const caCoast = -78.0 - (lat - 7.5) * 1.65;
+    if (L > caCoast + 0.4) return true;
+  }
+
+  // Australia
+  if (lat < -11 && lat >= -35 && L >= -220 && L <= -206) return true;
+
+  return false;
+}
+
 function evalOceanPoint(lon, lat, m) {
   let L = lon > 0 ? lon - 360 : lon;
-  const coastLon = southAmericaCoastLon(lat);
-  if (coastLon !== null && L > coastLon + 0.35) {
+  if (isLandPoint(L, lat)) {
     return { land: true, anom: 0, sst: 0 };
   }
 
+  const coastLon = southAmericaCoastLon(lat);
   const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
 
   const eastWedge = Math.min(1, Math.max(0, (L + 195) / 115));
@@ -409,18 +426,23 @@ function renderHeatToOffscreen() {
   const img = octx.createImageData(NX, NY);
   for(let j=0; j<NY; j++){
     const lat = LAT1 - (j + 0.5)*(LAT1 - LAT0)/NY;
+    const fadeLat = Math.min(1, (LAT1 - lat) / 5, (lat - LAT0) / 5);
     for(let i=0; i<NX; i++){
       const lon = LON0 + (i + 0.5)*(LON1 - LON0)/NX;
+      const fadeLon = Math.min(1, (lon - LON0) / 12);
+      const edgeFade = Math.max(0, fadeLat * fadeLon);
+
       const res = evalOceanPoint(lon, lat, S.m);
       const k = (j*NX + i)*4;
-      if (res.land) {
+      if (res.land || edgeFade <= 0.01) {
         img.data[k+3] = 0;
         continue;
       }
       const val = S.v === 'sst' ? res.sst : res.anom;
       const t = Math.min(511, Math.max(0, Math.floor((val - r.min)/(r.max - r.min)*511)));
       img.data[k]=r.lut[t*3]; img.data[k+1]=r.lut[t*3+1]; img.data[k+2]=r.lut[t*3+2];
-      img.data[k+3] = S.v === 'sst' ? 145 : Math.min(190, Math.max(20, Math.abs(val)*92));
+      const baseAlpha = S.v === 'sst' ? 115 : Math.min(190, Math.max(20, Math.abs(val)*92));
+      img.data[k+3] = Math.round(baseAlpha * edgeFade);
     }
   }
   octx.putImageData(img, 0, 0);
