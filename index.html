@@ -235,7 +235,7 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
 const MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const $ = id => document.getElementById(id);
 
-let DATOS = null, N = 0, FC0 = 0, START_YEAR = 2000;
+let DATOS = null, N = 0, FC0 = 0, MAX_HIST = 0, START_YEAR = 2000;
 const S = { m: 0, v: 'anom', dep: 'PIURA', playing: false, timer: null };
 const isMobile = window.innerWidth <= 640;
 
@@ -247,7 +247,7 @@ const PUERTOS = [
   { name: 'Ilo (Sur)', lat: -17.64, lng: -71.36, factor: 0.65 }
 ];
 
-/* ===== MOTOR TÉRMICO GLOBAL (TEXTURA ESFÉRICA 360° SIN CORTES) ===== */
+/* ===== MOTOR TÉRMICO GLOBAL (TEXTURA ESFÉRICA 360° ALINEADA AL PACÍFICO) ===== */
 const RAMPS = {
   anom:{min:-2.5,max:4.5,title:'Anomalía TSM Pacífico (°C)',stops:[[-2.5,'#1e3a8a'],[-1.2,'#3b82f6'],[-0.4,'#93c5fd'],[0,'#1e293b'],[0.5,'#fde047'],[1.5,'#f97316'],[2.8,'#dc2626'],[4.5,'#7f1d1d']]},
   sst: {min:15,max:31,title:'Temperatura Superficial (°C)',stops:[[15,'#1e3a8a'],[20,'#06b6d4'],[24,'#84cc16'],[27,'#eab308'],[29,'#f97316'],[31,'#b91c1c']]}
@@ -272,31 +272,29 @@ function southAmericaCoastLon(lat) {
   if (lat >= -6) return -81.3 - (lat + 6) * 0.44;
   if (lat >= -14) return -76.2 + (lat + 14) * (-0.63);
   if (lat >= -18.4) return -70.3 + (lat + 18.4) * (-1.34);
-  if (lat >= -35) return -71.6 + (lat + 35) * (-0.08);
+  if (lat >= -45) return -71.6 + (lat + 35) * (-0.08);
   return null;
 }
 
-function isLandPoint(L, lat) {
-  // Sudamérica completa
-  const saCoast = southAmericaCoastLon(lat);
-  if (saCoast !== null && L > saCoast + 0.35 && L < -34) return true;
-  if (lat < -35 && lat > -56 && L > -75 && L < -53) return true;
-
-  // México y Centroamérica
-  if (lat > 7.5 && lat <= 32) {
-    const caCoast = -78.0 - (lat - 7.5) * 1.65;
-    if (L > caCoast + 0.4 && L < -60) return true;
+function isPacificOcean(lon, lat) {
+  if (lon >= 135) {
+    if (lat < -11 && lat >= -40 && lon <= 154) return false;
+    return true;
   }
-
-  // Australia
-  if (lat < -11 && lat >= -40 && L >= 112 && L <= 154) return true;
-
+  if (lon < 0) {
+    if (lat > 7.5) {
+      const caCoast = -78.0 - (lat - 7.5) * 1.65;
+      return lon < caCoast - 0.3;
+    }
+    const saCoast = southAmericaCoastLon(lat);
+    if (saCoast !== null) return lon < saCoast - 0.25;
+  }
   return false;
 }
 
 function evalOceanPoint(lon, lat, m) {
-  let L = lon > 0 ? lon - 360 : lon; // Pacífico oeste queda en [-220, -180]
-  if (isLandPoint(lon, lat)) return { land: true, anom: 0, sst: 0 };
+  if (!isPacificOcean(lon, lat)) return { land: true, anom: 0, sst: 0 };
+  let L = lon > 0 ? lon - 360 : lon;
 
   const coastLon = southAmericaCoastLon(lat);
   const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
@@ -323,7 +321,6 @@ function evalOceanPoint(lon, lat, m) {
   return { land: false, anom: a, sst: clim + a };
 }
 
-/* Canvas equirectangular 360x180 que envuelve el globo 3D */
 const texCanvas = document.createElement('canvas');
 texCanvas.width = 360; texCanvas.height = 180;
 const tctx = texCanvas.getContext('2d');
@@ -340,14 +337,11 @@ function updateHeatSphereTexture() {
 
   for (let j = 0; j < H; j++) {
     const lat = 90 - (j + 0.5);
-    // Solo pintamos la franja oceánica tropical/subtropical (-42° a +32°) con difuminado suave
     const bandFade = lat > 32 || lat < -42 ? 0 : Math.min(1, (32 - lat) / 6, (lat + 42) / 6);
     for (let i = 0; i < W; i++) {
       const lon = -180 + (i + 0.5);
       const k = (j * W + i) * 4;
-      // Limitar al océano Pacífico (de 135°E hacia el este hasta América en -70°O)
-      const inPacific = (lon >= 135 || lon <= -70);
-      if (!inPacific || bandFade <= 0.01) {
+      if (bandFade <= 0.01) {
         img.data[k + 3] = 0;
         continue;
       }
@@ -362,7 +356,7 @@ function updateHeatSphereTexture() {
       img.data[k]     = r.lut[idx * 3];
       img.data[k + 1] = r.lut[idx * 3 + 1];
       img.data[k + 2] = r.lut[idx * 3 + 2];
-      const baseAlpha = S.v === 'sst' ? 130 : Math.min(205, Math.max(18, Math.abs(val) * 105));
+      const baseAlpha = S.v === 'sst' ? 120 : Math.min(205, Math.max(18, Math.abs(val) * 105));
       img.data[k + 3] = Math.round(baseAlpha * bandFade * westFade);
     }
   }
@@ -383,7 +377,6 @@ const world = Globe()( $('globeViz') )
   .width(wrapEl.clientWidth)
   .height(wrapEl.clientHeight);
 
-// Crear esfera térmica envolvente justo sobre la superficie del globo
 setTimeout(() => {
   const globeRadius = world.getGlobeRadius();
   const geo = new THREE.SphereGeometry(globeRadius * 1.004, 72, 48);
@@ -394,13 +387,12 @@ setTimeout(() => {
     blending: THREE.NormalBlending
   });
   heatMesh = new THREE.Mesh(geo, mat);
+  heatMesh.rotation.y = -Math.PI / 2;
   world.scene().add(heatMesh);
 }, 100);
 
-// Vista inicial enfocada en Perú y el Pacífico Oriental
-world.pointOfView({ lat: -9.5, lng: -84, altitude: isMobile ? 1.55 : 1.15 }, 0);
+world.pointOfView({ lat: -9.5, lng: -86, altitude: isMobile ? 1.55 : 1.15 }, 0);
 
-// Configurar capas de polígonos (24 Departamentos del Perú)
 let peruFeatures = [];
 function rainColor(mm) {
   if (mm >= 320) return 'rgba(168, 85, 247, 0.72)';
@@ -455,7 +447,6 @@ async function loadPeruDepartments() {
   }
 }
 
-// Capa de Boyas Portuarias (Puntos 3D en el litoral)
 world
   .pointLat('lat')
   .pointLng('lng')
@@ -473,13 +464,12 @@ world
     return `<b>⚓ ${p.name}</b><br>Anomalía Marea: <b>${mLocal >= 0 ? '+' : ''}${mLocal} cm</b><br>Oleaje: <b>${oLocal} m</b>`;
   });
 
-// Capa de Arcos 3D: Vientos Alisios / Corrientes y Vector Onda Kelvin
 const WIND_LANES = [
   { startLat: 4, startLng: -95, endLat: 4, endLng: -155 },
   { startLat: 4, startLng: -155, endLat: 4, endLng: 155 },
   { startLat: -6, startLng: -85, endLat: -6, endLng: -145 },
   { startLat: -6, startLng: -145, endLat: -6, endLng: 160 },
-  { startLat: -14, startLng: -78, endLat: -4, endLng: -84 } // Corriente de Humboldt
+  { startLat: -14, startLng: -78, endLat: -4, endLng: -84 }
 ];
 
 function updateGlobeVectors() {
@@ -488,7 +478,7 @@ function updateGlobeVectors() {
   const arcs = [];
 
   if ($('chkWind').checked) {
-    const reverse = n34 > 0.8; // Debilitamiento/reversión de alisios en El Niño fuerte
+    const reverse = n34 > 0.8;
     WIND_LANES.forEach(w => {
       arcs.push({
         startLat: reverse ? w.endLat : w.startLat,
@@ -536,7 +526,11 @@ function drawChart() {
   const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
   const X = m => m/(N-1)*w, Y = v => h - (v + 2.2)/6.6*h;
 
-  g.fillStyle = 'rgba(249,115,22,.16)'; g.fillRect(X(FC0), 0, w - X(FC0), h);
+  // Zona sombreada exclusiva de pronóstico (a partir de MAX_HIST + 1)
+  if (MAX_HIST + 1 < N) {
+    g.fillStyle = 'rgba(249,115,22,.16)';
+    g.fillRect(X(MAX_HIST + 1), 0, w - X(MAX_HIST + 1), h);
+  }
   [-0.5, 0, 0.5, 1.5].forEach(v => {
     g.strokeStyle = v === 1.5 ? 'rgba(239,68,68,.35)' : 'rgba(148,163,184,.25)';
     g.setLineDash(v === 0 ? [] : [3,3]); g.beginPath(); g.moveTo(0, Y(v)); g.lineTo(w, Y(v)); g.stroke();
@@ -556,7 +550,7 @@ function drawChart() {
 function labelOf(m) { return MES[m % 12] + ' ' + (START_YEAR + Math.floor(m / 12)); }
 
 function updateUI() {
-  const m = S.m, fc = m >= FC0;
+  const m = S.m, fc = m > MAX_HIST;
   const n34 = DATOS.nino34[m], n12 = DATOS.nino12[m], soi = DATOS.soi[m];
   const marea = DATOS.marea_cm[m], oleaje = DATOS.oleaje_m[m];
   const rainDep = (DATOS.lluvias_peru[S.dep] || [])[m] || 0;
@@ -580,7 +574,7 @@ function updateUI() {
 
   $('status').textContent = st; $('status').style.color = col;
   $('date').textContent = labelOf(m);
-  const b = $('badge'); b.textContent = fc ? 'Pronóstico' : 'Histórico'; b.style.background = fc ? '#f97316' : '#2563eb';
+  const b = $('badge'); b.textContent = fc ? 'Pronóstico' : 'Oficial'; b.style.background = fc ? '#f97316' : '#2563eb';
   $('slider').value = m;
 
   const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
@@ -599,13 +593,30 @@ function render() {
   updateUI();
 }
 
-function bounds() { return S.v === 'fc' ? [FC0, N - 1] : [0, N - 1]; }
-function syncSlider() {
-  const [lo, hi] = bounds(), s = $('slider'); s.min = lo; s.max = hi;
-  s.style.background = S.v === 'fc' ? 'rgba(249,115,22,.3)' :
-    `linear-gradient(90deg,transparent ${FC0/(N-1)*100}%,rgba(249,115,22,.35) ${FC0/(N-1)*100}%)`;
+/* Límite dinámico: Histórico/Oficial llega hasta hoy (MAX_HIST); Pronóstico arranca después (MAX_HIST + 1) */
+function bounds() {
+  if (S.v === 'fc') {
+    const startFc = Math.min(N - 1, MAX_HIST + 1);
+    return [startFc, N - 1];
+  }
+  return [0, MAX_HIST];
 }
-function setMonth(m) { const [lo, hi] = bounds(); S.m = Math.max(lo, Math.min(hi, m)); render(); }
+
+function syncSlider() {
+  const [lo, hi] = bounds(), s = $('slider');
+  s.min = lo;
+  s.max = hi;
+  s.style.background = S.v === 'fc'
+    ? 'rgba(249,115,22,.35)'
+    : 'rgba(56,189,248,.22)';
+}
+
+function setMonth(m) {
+  const [lo, hi] = bounds();
+  S.m = Math.max(lo, Math.min(hi, m));
+  render();
+}
+
 function play(on) {
   S.playing = on; $('play').textContent = on ? '⏸' : '▶'; clearInterval(S.timer);
   const [lo, hi] = bounds();
@@ -640,7 +651,13 @@ async function initApp() {
     START_YEAR = DATOS.meta.start_year || 2000;
     N = DATOS.nino34.length;
     FC0 = DATOS.meta.fc0;
-    S.m = FC0 - 1;
+
+    // Calcular índice correspondiente a la fecha actual real (ej. Nov 2026 -> 26*12 + 10)
+    const now = new Date();
+    const todayIdx = (now.getFullYear() - START_YEAR) * 12 + now.getMonth();
+    // El límite oficial llega hasta la fecha actual (tope en el último dato disponible)
+    MAX_HIST = Math.max(0, Math.min(N - 1, Math.min(FC0 - 1, todayIdx)));
+    S.m = MAX_HIST;
 
     const sel = $('selDep');
     Object.keys(DATOS.lluvias_peru).sort().forEach(dep => {
@@ -677,7 +694,15 @@ document.querySelectorAll('input[name=v]').forEach(r => r.onchange = e => { play
 $('chart').onclick = e => {
   const r = e.target.getBoundingClientRect();
   const targetM = Math.round((e.clientX - r.left) / r.width * (N - 1));
-  if (S.v === 'fc' && targetM < FC0) { S.v = 'anom'; document.querySelector('input[name=v][value="anom"]').checked = true; syncSlider(); }
+  if (targetM > MAX_HIST && S.v !== 'fc') {
+    S.v = 'fc';
+    document.querySelector('input[name=v][value="fc"]').checked = true;
+    syncSlider();
+  } else if (targetM <= MAX_HIST && S.v === 'fc') {
+    S.v = 'anom';
+    document.querySelector('input[name=v][value="anom"]').checked = true;
+    syncSlider();
+  }
   setMonth(targetM);
 };
 
@@ -781,12 +806,12 @@ const TEMAS=[
  pt:'Aqui você vê ao vivo a temperatura do mar e as ondas em Paita, Callao e Ilo. Com o El Niño, o nível do mar sobe e as ondas crescem na costa.',
  it:'Qui vedi in diretta temperatura del mare e onde a Paita, Callao e Ilo. Con El Niño il livello del mare sale e le onde crescono lungo la costa.'},
 {id:'tiempo',sel:'footer',
- es:'Con esta barra viajas por los meses del 2000 al 2027. Pulsa play para ver cómo cambia el mar; la zona naranja es pronóstico.',
- en:'Use this bar to travel through the months from 2000 to 2027. Press play to watch the sea change; the orange zone is forecast.',
- de:'Mit dieser Leiste reist du durch die Monate von 2000 bis 2027. Drücke Play, um die Veränderung des Meeres zu sehen; der orange Bereich ist Prognose.',
- fr:'Cette barre te fait voyager dans les mois de 2000 à 2027. Appuie sur lecture pour voir la mer changer ; la zone orange est la prévision.',
- pt:'Com esta barra você viaja pelos meses de 2000 a 2027. Aperte play para ver o mar mudar; a zona laranja é previsão.',
- it:'Con questa barra viaggi tra i mesi dal 2000 al 2027. Premi play per vedere il mare cambiare; la zona arancione è previsione.'},
+ es:'Con esta barra viajas por los meses oficiales hasta la fecha actual, o cambias a la variable Pronóstico para explorar los meses futuros.',
+ en:'Use this bar to travel through official months up to today, or switch to Forecast to explore upcoming months.',
+ de:'Mit dieser Leiste reist du durch die offiziellen Monate bis heute oder wechselst zur Prognose für die kommenden Monate.',
+ fr:"Cette barre te fait voyager dans les mois officiels jusqu'à aujourd'hui, ou passe à Prévision pour explorer les mois futurs.",
+ pt:'Com esta barra você viaja pelos meses oficiais até a data atual, ou muda para Previsão para explorar os meses futuros.',
+ it:'Con questa barra viaggi tra i mesi ufficiali fino alla data odierna, oppure passi a Previsione per esplorare i mesi futuri.'},
 {id:'ahora',sel:'#status'}
 ];
 
