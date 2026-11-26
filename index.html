@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Monitor Nacional El Niño · Perú, Lluvias & Mareas (2000–2027)</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/globe.gl@2.32.1/dist/globe.gl.min.js"></script>
 <style>
 :root{
   --bg:#090f1a;--panel:#0f1726;--ink:#e6edf6;--mut:#8fa2bd;--line:#1e2d47;
-  --acc:#fb923c;--teal:#10b981;--blue:#38bdf8;--sea:#07101d;
+  --acc:#fb923c;--teal:#10b981;--blue:#38bdf8;--sea:#030712;
   box-sizing:border-box;
 }
 *{box-sizing:border-box}
@@ -70,17 +70,20 @@ aside h2:first-child{margin-top:0}
 canvas#chart{width:100%;height:84px;display:block;cursor:pointer;border-radius:6px;background:#0b1220;border:1px solid var(--line)}
 .note{font-size:10.5px;color:var(--mut);margin-top:5px;line-height:1.3}
 
-.mapwrap{position:relative;min-height:0;background:var(--sea);overflow:hidden}
-#leafletMap{width:100%;height:100%;background:#07101d;z-index:1}
-#fxCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
-.leaflet-control-attribution{background:rgba(9,15,26,.75)!important;color:#64748b!important;font-size:9px!important}
-.leaflet-control-attribution a{color:#94a3b8!important}
+.mapwrap{position:relative;min-height:0;background:radial-gradient(circle at center, #0b162c 0%, #030712 100%);overflow:hidden}
+#globeViz{width:100%;height:100%;cursor:grab}
+#globeViz:active{cursor:grabbing}
 
-#tip{
-  position:absolute;pointer-events:none;background:rgba(9,15,26,.94);
-  border:1px solid var(--line);color:#fff;padding:6px 10px;border-radius:7px;
-  font-size:11.5px;display:none;white-space:nowrap;z-index:15;box-shadow:0 8px 20px rgba(0,0,0,.5);
+.scene-tooltip{
+  background:rgba(9,15,26,.94)!important;
+  border:1px solid var(--line)!important;
+  color:#fff!important;
+  padding:6px 10px!important;
+  border-radius:7px!important;
+  font-size:11.5px!important;
+  box-shadow:0 8px 20px rgba(0,0,0,.6)!important;
 }
+
 .legend{
   position:absolute;left:12px;bottom:12px;background:rgba(15,23,38,.92);
   backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:9px;
@@ -134,7 +137,7 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
   .card b{font-size:13.5px}
   .card.wide{grid-column:span 3}
   canvas#chart{height:68px}
-  .live-box{top:8px;right:8px;left:52px;max-width:none;padding:5px 8px;font-size:10px;line-height:1.3}
+  .live-box{top:8px;right:8px;left:12px;max-width:none;padding:5px 8px;font-size:10px;line-height:1.3}
   .live-box b{display:inline;margin-right:4px}
   .legend{left:8px;bottom:8px;width:185px;padding:6px 8px}
   .legend .t{font-size:9px}
@@ -163,7 +166,7 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
       <button class="zoom-btn" id="btnZoomPeru">🇵🇪 Todo el Perú</button>
       <button class="zoom-btn" id="btnZoomPac">🌊 Pacífico & Ondas Kelvin</button>
     </div>
-    <select id="selDep" class="dep-select" title="Selecciona o haz clic en un departamento en el mapa"></select>
+    <select id="selDep" class="dep-select" title="Selecciona o haz clic en un departamento en el globo"></select>
 
     <h2>Indicadores Teleconexión & Litoral</h2>
     <div class="stats">
@@ -178,7 +181,7 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
 
     <h2>Serie Histórica (2000–2027)</h2>
     <canvas id="chart"></canvas>
-    <p class="note">Naranja: Niño 3.4 (NOAA) · Verde: ICEN Perú. Toca un año o departamento en el mapa.</p>
+    <p class="note">Naranja: Niño 3.4 (NOAA) · Verde: ICEN Perú. Toca un año o gira el globo y haz clic en un departamento.</p>
 
     <div>
       <h2>Variable Oceánica</h2>
@@ -198,9 +201,7 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
   </aside>
 
   <div class="mapwrap" id="wrap">
-    <div id="leafletMap"></div>
-    <canvas id="fxCanvas"></canvas>
-    <div id="tip"></div>
+    <div id="globeViz"></div>
     <div class="live-box">
       <b>En vivo · Litoral:</b>
       <span id="liveText">Consultando Paita, Callao e Ilo...</span>
@@ -236,104 +237,17 @@ const $ = id => document.getElementById(id);
 
 let DATOS = null, N = 0, FC0 = 0, START_YEAR = 2000;
 const S = { m: 0, v: 'anom', dep: 'PIURA', playing: false, timer: null };
-
 const isMobile = window.innerWidth <= 640;
-const map = L.map('leafletMap', {
-  center: [-9.5, -76.5],
-  zoom: isMobile ? 4 : 5,
-  minZoom: 3,
-  maxZoom: 9
-});
-
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution: 'Esri / NOAA · IGP-ENFEN, ECMWF',
-  opacity: 0.62
-}).addTo(map);
-
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-  opacity: 0.72
-}).addTo(map);
 
 const PUERTOS = [
-  { name: 'Paita / Talara (Norte)', lat: -5.09, lon: -81.15, factor: 1.25 },
-  { name: 'Chimbote / Salaverry', lat: -9.08, lon: -78.62, factor: 1.05 },
-  { name: 'Callao (Centro)', lat: -12.06, lon: -77.18, factor: 0.90 },
-  { name: 'San Juan de Marcona', lat: -15.36, lon: -75.18, factor: 0.75 },
-  { name: 'Ilo (Sur)', lat: -17.64, lon: -71.36, factor: 0.65 }
+  { name: 'Paita / Talara (Norte)', lat: -5.09, lng: -81.15, factor: 1.25 },
+  { name: 'Chimbote / Salaverry', lat: -9.08, lng: -78.62, factor: 1.05 },
+  { name: 'Callao (Centro)', lat: -12.06, lng: -77.18, factor: 0.90 },
+  { name: 'San Juan de Marcona', lat: -15.36, lng: -75.18, factor: 0.75 },
+  { name: 'Ilo (Sur)', lat: -17.64, lng: -71.36, factor: 0.65 }
 ];
-const portLayerGroup = L.layerGroup().addTo(map);
 
-function updatePortsLayer() {
-  portLayerGroup.clearLayers();
-  if (!DATOS || !$('chkTide').checked) return;
-  const mareaBase = DATOS.marea_cm[S.m];
-  const oleajeBase = DATOS.oleaje_m[S.m];
-
-  PUERTOS.forEach(p => {
-    const mLocal = (mareaBase * p.factor).toFixed(1);
-    const oLocal = (oleajeBase * (0.9 + p.factor * 0.1)).toFixed(2);
-    const alertColor = mLocal >= 18 ? '#ef4444' : mLocal >= 8 ? '#fb923c' : '#38bdf8';
-
-    L.circleMarker([p.lat, p.lon], {
-      radius: isMobile ? 7.5 : 6.5, color: '#fff', weight: 1.8, fillColor: alertColor, fillOpacity: 0.95
-    }).bindTooltip(
-      `<b>⚓ ${p.name}</b><br>Anomalía Marea: <b>${mLocal >= 0 ? '+' : ''}${mLocal} cm</b><br>Oleaje: <b>${oLocal} m</b>`,
-      { direction: 'left' }
-    ).addTo(portLayerGroup);
-  });
-}
-
-let peruLayer = null;
-
-function rainColor(mm) {
-  if (mm >= 320) return '#a855f7';
-  if (mm >= 180) return '#2563eb';
-  if (mm >= 80)  return '#0ea5e9';
-  if (mm >= 25)  return '#0369a1';
-  return '#1e293b';
-}
-
-function stylePeruDepartments() {
-  if (!peruLayer || !DATOS) return;
-  peruLayer.eachLayer(layer => {
-    const rawName = (layer.feature.properties.NOMBDEP || '').toUpperCase().trim();
-    const depKey = DATOS.lluvias_peru[rawName] ? rawName : 'PIURA';
-    const mm = DATOS.lluvias_peru[depKey][S.m] || 0;
-    const isSelected = depKey === S.dep;
-
-    layer.setStyle({
-      color: isSelected ? '#10b981' : 'rgba(226, 232, 240, 0.55)',
-      weight: isSelected ? 3 : 1.1,
-      fillColor: rainColor(mm),
-      fillOpacity: mm >= 25 ? 0.48 : 0.18
-    });
-    layer.setTooltipContent(`<b>${depKey}</b>: ${mm.toFixed(1)} mm/mes`);
-  });
-}
-
-async function loadPeruDepartments() {
-  try {
-    const res = await fetch('https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_departamental_simple.geojson');
-    const peruGeoData = await res.json();
-    peruLayer = L.geoJSON(peruGeoData, {
-      onEachFeature: (feature, layer) => {
-        const name = (feature.properties.NOMBDEP || '').toUpperCase().trim();
-        layer.bindTooltip(name, { sticky: true });
-        layer.on('click', () => {
-          if (DATOS && DATOS.lluvias_peru[name]) {
-            S.dep = name;
-            $('selDep').value = name;
-            render();
-          }
-        });
-      }
-    }).addTo(map);
-    stylePeruDepartments();
-  } catch (e) {
-    console.warn('Error cargando departamentos:', e);
-  }
-}
-
+/* ===== MOTOR TÉRMICO GLOBAL (TEXTURA ESFÉRICA 360° SIN CORTES) ===== */
 const RAMPS = {
   anom:{min:-2.5,max:4.5,title:'Anomalía TSM Pacífico (°C)',stops:[[-2.5,'#1e3a8a'],[-1.2,'#3b82f6'],[-0.4,'#93c5fd'],[0,'#1e293b'],[0.5,'#fde047'],[1.5,'#f97316'],[2.8,'#dc2626'],[4.5,'#7f1d1d']]},
   sst: {min:15,max:31,title:'Temperatura Superficial (°C)',stops:[[15,'#1e3a8a'],[20,'#06b6d4'],[24,'#84cc16'],[27,'#eab308'],[29,'#f97316'],[31,'#b91c1c']]}
@@ -351,8 +265,6 @@ Object.values(RAMPS).forEach(r => {
   r.lut = lut;
 });
 
-const LON0 = -220, LON1 = -70, LAT0 = -35, LAT1 = 25, NX = 220, NY = 95;
-
 function southAmericaCoastLon(lat) {
   if (lat > 12) return null;
   if (lat >= 5) return -77.5 + (lat - 5) * 0.4;
@@ -365,27 +277,26 @@ function southAmericaCoastLon(lat) {
 }
 
 function isLandPoint(L, lat) {
-  // Sudamérica
+  // Sudamérica completa
   const saCoast = southAmericaCoastLon(lat);
-  if (saCoast !== null && L > saCoast + 0.35) return true;
+  if (saCoast !== null && L > saCoast + 0.35 && L < -34) return true;
+  if (lat < -35 && lat > -56 && L > -75 && L < -53) return true;
 
   // México y Centroamérica
-  if (lat > 7.5 && lat <= 25) {
+  if (lat > 7.5 && lat <= 32) {
     const caCoast = -78.0 - (lat - 7.5) * 1.65;
-    if (L > caCoast + 0.4) return true;
+    if (L > caCoast + 0.4 && L < -60) return true;
   }
 
   // Australia
-  if (lat < -11 && lat >= -35 && L >= -220 && L <= -206) return true;
+  if (lat < -11 && lat >= -40 && L >= 112 && L <= 154) return true;
 
   return false;
 }
 
 function evalOceanPoint(lon, lat, m) {
-  let L = lon > 0 ? lon - 360 : lon;
-  if (isLandPoint(L, lat)) {
-    return { land: true, anom: 0, sst: 0 };
-  }
+  let L = lon > 0 ? lon - 360 : lon; // Pacífico oeste queda en [-220, -180]
+  if (isLandPoint(lon, lat)) return { land: true, anom: 0, sst: 0 };
 
   const coastLon = southAmericaCoastLon(lat);
   const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
@@ -393,7 +304,6 @@ function evalOceanPoint(lon, lat, m) {
   const eastWedge = Math.min(1, Math.max(0, (L + 195) / 115));
   const meridionalWidth = 4.2 + 4.8 * eastWedge;
   const eqBand = Math.exp(-Math.pow(lat / meridionalWidth, 2));
-
   const tiw = 0.28 * Math.sin(L * 0.38 + m * 1.15) * Math.exp(-Math.pow((lat - 2.4) / 2.6, 2));
 
   const refCoast = coastLon !== null ? coastLon : -80.5;
@@ -413,90 +323,209 @@ function evalOceanPoint(lon, lat, m) {
   return { land: false, anom: a, sst: clim + a };
 }
 
-const fx = $('fxCanvas'), fctx = fx.getContext('2d');
-const off = document.createElement('canvas'); off.width = NX; off.height = NY;
-const octx = off.getContext('2d');
-const PARTICLES = Array.from({length: isMobile ? 140 : 250}, () => ({
-  lon: LON0 + Math.random()*(LON1 - LON0), lat: LAT0 + Math.random()*(LAT1 - LAT0), age: Math.random()*100
-}));
-let wavePhase = 0;
+/* Canvas equirectangular 360x180 que envuelve el globo 3D */
+const texCanvas = document.createElement('canvas');
+texCanvas.width = 360; texCanvas.height = 180;
+const tctx = texCanvas.getContext('2d');
+const heatTexture = new THREE.CanvasTexture(texCanvas);
+heatTexture.colorSpace = THREE.SRGBColorSpace;
 
-function renderHeatToOffscreen() {
+let heatMesh = null;
+
+function updateHeatSphereTexture() {
+  if (!DATOS) return;
+  const W = 360, H = 180;
   const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
-  const img = octx.createImageData(NX, NY);
-  for(let j=0; j<NY; j++){
-    const lat = LAT1 - (j + 0.5)*(LAT1 - LAT0)/NY;
-    const fadeLat = Math.min(1, (LAT1 - lat) / 5, (lat - LAT0) / 5);
-    for(let i=0; i<NX; i++){
-      const lon = LON0 + (i + 0.5)*(LON1 - LON0)/NX;
-      const fadeLon = Math.min(1, (lon - LON0) / 12);
-      const edgeFade = Math.max(0, fadeLat * fadeLon);
+  const img = tctx.createImageData(W, H);
 
+  for (let j = 0; j < H; j++) {
+    const lat = 90 - (j + 0.5);
+    // Solo pintamos la franja oceánica tropical/subtropical (-42° a +32°) con difuminado suave
+    const bandFade = lat > 32 || lat < -42 ? 0 : Math.min(1, (32 - lat) / 6, (lat + 42) / 6);
+    for (let i = 0; i < W; i++) {
+      const lon = -180 + (i + 0.5);
+      const k = (j * W + i) * 4;
+      // Limitar al océano Pacífico (de 135°E hacia el este hasta América en -70°O)
+      const inPacific = (lon >= 135 || lon <= -70);
+      if (!inPacific || bandFade <= 0.01) {
+        img.data[k + 3] = 0;
+        continue;
+      }
+      const westFade = lon >= 135 ? Math.min(1, (lon - 135) / 14) : 1;
       const res = evalOceanPoint(lon, lat, S.m);
-      const k = (j*NX + i)*4;
-      if (res.land || edgeFade <= 0.01) {
-        img.data[k+3] = 0;
+      if (res.land) {
+        img.data[k + 3] = 0;
         continue;
       }
       const val = S.v === 'sst' ? res.sst : res.anom;
-      const t = Math.min(511, Math.max(0, Math.floor((val - r.min)/(r.max - r.min)*511)));
-      img.data[k]=r.lut[t*3]; img.data[k+1]=r.lut[t*3+1]; img.data[k+2]=r.lut[t*3+2];
-      const baseAlpha = S.v === 'sst' ? 115 : Math.min(190, Math.max(20, Math.abs(val)*92));
-      img.data[k+3] = Math.round(baseAlpha * edgeFade);
+      const idx = Math.min(511, Math.max(0, Math.floor((val - r.min) / (r.max - r.min) * 511)));
+      img.data[k]     = r.lut[idx * 3];
+      img.data[k + 1] = r.lut[idx * 3 + 1];
+      img.data[k + 2] = r.lut[idx * 3 + 2];
+      const baseAlpha = S.v === 'sst' ? 130 : Math.min(205, Math.max(18, Math.abs(val) * 105));
+      img.data[k + 3] = Math.round(baseAlpha * bandFade * westFade);
     }
   }
-  octx.putImageData(img, 0, 0);
+  tctx.putImageData(img, 0, 0);
+  heatTexture.needsUpdate = true;
+  if (heatMesh) heatMesh.visible = $('chkHeat').checked;
 }
 
-function animateOverlay() {
-  const W = fx.width = fx.clientWidth, H = fx.height = fx.clientHeight;
-  fctx.clearRect(0, 0, W, H);
-  if (!DATOS) { requestAnimationFrame(animateOverlay); return; }
+/* ===== INICIALIZACIÓN DEL GLOBO TERRÁQUEO 3D ===== */
+const wrapEl = $('wrap');
+const world = Globe()( $('globeViz') )
+  .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+  .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+  .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+  .showAtmosphere(true)
+  .atmosphereColor('#38bdf8')
+  .atmosphereAltitude(0.16)
+  .width(wrapEl.clientWidth)
+  .height(wrapEl.clientHeight);
 
-  if ($('chkHeat').checked) {
-    const nw = map.latLngToContainerPoint([LAT1, LON0]), se = map.latLngToContainerPoint([LAT0, LON1]);
-    fctx.save(); fctx.globalCompositeOperation = 'screen'; fctx.imageSmoothingEnabled = true;
-    fctx.drawImage(off, nw.x, nw.y, se.x - nw.x, se.y - nw.y); fctx.restore();
+// Crear esfera térmica envolvente justo sobre la superficie del globo
+setTimeout(() => {
+  const globeRadius = world.getGlobeRadius();
+  const geo = new THREE.SphereGeometry(globeRadius * 1.004, 72, 48);
+  const mat = new THREE.MeshBasicMaterial({
+    map: heatTexture,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending
+  });
+  heatMesh = new THREE.Mesh(geo, mat);
+  world.scene().add(heatMesh);
+}, 100);
+
+// Vista inicial enfocada en Perú y el Pacífico Oriental
+world.pointOfView({ lat: -9.5, lng: -84, altitude: isMobile ? 1.55 : 1.15 }, 0);
+
+// Configurar capas de polígonos (24 Departamentos del Perú)
+let peruFeatures = [];
+function rainColor(mm) {
+  if (mm >= 320) return 'rgba(168, 85, 247, 0.72)';
+  if (mm >= 180) return 'rgba(37, 99, 235, 0.68)';
+  if (mm >= 80)  return 'rgba(14, 165, 233, 0.60)';
+  if (mm >= 25)  return 'rgba(3, 105, 161, 0.50)';
+  return 'rgba(30, 41, 59, 0.35)';
+}
+
+world
+  .polygonAltitude(d => {
+    const name = (d.properties.NOMBDEP || '').toUpperCase().trim();
+    return name === S.dep ? 0.014 : 0.007;
+  })
+  .polygonCapColor(d => {
+    if (!DATOS || !$('chkPeru').checked) return 'rgba(0,0,0,0)';
+    const raw = (d.properties.NOMBDEP || '').toUpperCase().trim();
+    const depKey = DATOS.lluvias_peru[raw] ? raw : 'PIURA';
+    const mm = DATOS.lluvias_peru[depKey][S.m] || 0;
+    return rainColor(mm);
+  })
+  .polygonSideColor(() => 'rgba(16, 185, 129, 0.25)')
+  .polygonStrokeColor(d => {
+    if (!$('chkPeru').checked) return 'rgba(0,0,0,0)';
+    const raw = (d.properties.NOMBDEP || '').toUpperCase().trim();
+    return raw === S.dep ? '#10b981' : 'rgba(226, 232, 240, 0.65)';
+  })
+  .polygonLabel(d => {
+    if (!DATOS || !$('chkPeru').checked) return '';
+    const raw = (d.properties.NOMBDEP || '').toUpperCase().trim();
+    const depKey = DATOS.lluvias_peru[raw] ? raw : 'PIURA';
+    const mm = DATOS.lluvias_peru[depKey][S.m] || 0;
+    return `<b>📍 ${depKey}</b><br>Lluvia mensual: <b>${mm.toFixed(1)} mm</b>`;
+  })
+  .onPolygonClick(d => {
+    const name = (d.properties.NOMBDEP || '').toUpperCase().trim();
+    if (DATOS && DATOS.lluvias_peru[name]) {
+      S.dep = name;
+      $('selDep').value = name;
+      render();
+    }
+  });
+
+async function loadPeruDepartments() {
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_departamental_simple.geojson');
+    const geo = await res.json();
+    peruFeatures = geo.features || [];
+    world.polygonsData(peruFeatures);
+  } catch (e) {
+    console.warn('Error cargando departamentos:', e);
   }
+}
 
+// Capa de Boyas Portuarias (Puntos 3D en el litoral)
+world
+  .pointLat('lat')
+  .pointLng('lng')
+  .pointAltitude(0.016)
+  .pointRadius(isMobile ? 0.55 : 0.45)
+  .pointColor(p => {
+    if (!DATOS) return '#38bdf8';
+    const mLocal = DATOS.marea_cm[S.m] * p.factor;
+    return mLocal >= 18 ? '#ef4444' : mLocal >= 8 ? '#fb923c' : '#38bdf8';
+  })
+  .pointLabel(p => {
+    if (!DATOS) return p.name;
+    const mLocal = (DATOS.marea_cm[S.m] * p.factor).toFixed(1);
+    const oLocal = (DATOS.oleaje_m[S.m] * (0.9 + p.factor * 0.1)).toFixed(2);
+    return `<b>⚓ ${p.name}</b><br>Anomalía Marea: <b>${mLocal >= 0 ? '+' : ''}${mLocal} cm</b><br>Oleaje: <b>${oLocal} m</b>`;
+  });
+
+// Capa de Arcos 3D: Vientos Alisios / Corrientes y Vector Onda Kelvin
+const WIND_LANES = [
+  { startLat: 4, startLng: -95, endLat: 4, endLng: -155 },
+  { startLat: 4, startLng: -155, endLat: 4, endLng: 155 },
+  { startLat: -6, startLng: -85, endLat: -6, endLng: -145 },
+  { startLat: -6, startLng: -145, endLat: -6, endLng: 160 },
+  { startLat: -14, startLng: -78, endLat: -4, endLng: -84 } // Corriente de Humboldt
+];
+
+function updateGlobeVectors() {
+  if (!DATOS) return;
   const n12 = DATOS.nino12[S.m], n34 = DATOS.nino34[S.m];
-  if ($('chkVec').checked && n12 > 0.4) {
-    wavePhase = (wavePhase + 0.015) % 1;
-    const pts = [
-      map.latLngToContainerPoint([0, -165]), map.latLngToContainerPoint([-1.5, -130]),
-      map.latLngToContainerPoint([-3.2, -98]), map.latLngToContainerPoint([-5.19, -81.15])
-    ];
-    fctx.save(); fctx.beginPath(); fctx.moveTo(pts[0].x, pts[0].y);
-    fctx.bezierCurveTo(pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y);
-    fctx.strokeStyle = 'rgba(16, 185, 129, 0.85)'; fctx.lineWidth = Math.min(5, 2 + n12 * 0.7);
-    fctx.setLineDash([12, 8]); fctx.lineDashOffset = -wavePhase * 40;
-    fctx.shadowColor = '#10b981'; fctx.shadowBlur = 10; fctx.stroke();
-
-    const rPulse = 6 + wavePhase * (14 + n12 * 4);
-    fctx.beginPath(); fctx.arc(pts[3].x, pts[3].y, rPulse, 0, Math.PI*2);
-    fctx.strokeStyle = `rgba(239, 68, 68, ${1 - wavePhase})`; fctx.setLineDash([]); fctx.lineWidth = 2; fctx.stroke();
-    fctx.restore();
-  }
+  const arcs = [];
 
   if ($('chkWind').checked) {
-    fctx.save(); fctx.lineWidth = 1.3;
-    PARTICLES.forEach(p => {
-      const p1 = map.latLngToContainerPoint([p.lat, p.lon]);
-      const eqFactor = Math.exp(-Math.pow(p.lat / 8, 2));
-      const u = (-0.28 + n34 * 0.22 * eqFactor);
-      const v = 0.08 * Math.sin(p.lon * 0.1) + (p.lon > -95 && p.lat < 0 ? 0.14 : -0.05 * Math.sign(p.lat));
-      p.lon += u; p.lat += v; p.age++;
-      if (p.age > 90 || p.lon < LON0 || p.lon > LON1 || p.lat < LAT0 || p.lat > LAT1) {
-        p.lon = LON0 + Math.random()*(LON1 - LON0); p.lat = LAT0 + Math.random()*(LAT1 - LAT0); p.age = 0; return;
-      }
-      const p2 = map.latLngToContainerPoint([p.lat, p.lon]);
-      const alpha = Math.sin((p.age / 90) * Math.PI) * 0.55;
-      fctx.strokeStyle = (u > 0 && eqFactor > 0.4) ? `rgba(251, 146, 60, ${alpha})` : `rgba(226, 232, 240, ${alpha})`;
-      fctx.beginPath(); fctx.moveTo(p1.x, p1.y); fctx.lineTo(p2.x, p2.y); fctx.stroke();
+    const reverse = n34 > 0.8; // Debilitamiento/reversión de alisios en El Niño fuerte
+    WIND_LANES.forEach(w => {
+      arcs.push({
+        startLat: reverse ? w.endLat : w.startLat,
+        startLng: reverse ? w.endLng : w.startLng,
+        endLat:   reverse ? w.startLat : w.endLat,
+        endLng:   reverse ? w.startLng : w.endLng,
+        color: reverse ? ['rgba(251,146,60,0.15)', 'rgba(251,146,60,0.85)'] : ['rgba(226,232,240,0.1)', 'rgba(148,163,184,0.65)'],
+        stroke: 0.45,
+        alt: 0.025,
+        dashLen: 0.35,
+        dashGap: 0.45,
+        time: 2600
+      });
     });
-    fctx.restore();
   }
-  requestAnimationFrame(animateOverlay);
+
+  if ($('chkVec').checked && n12 > 0.4) {
+    arcs.push({
+      startLat: 0, startLng: -165,
+      endLat: -5.19, endLng: -81.15,
+      color: ['rgba(16,185,129,0.25)', '#10b981'],
+      stroke: Math.min(1.6, 0.7 + n12 * 0.35),
+      alt: 0.09,
+      dashLen: 0.45,
+      dashGap: 0.25,
+      time: 1600
+    });
+  }
+
+  world
+    .arcsData(arcs)
+    .arcColor('color')
+    .arcStroke('stroke')
+    .arcAltitude('alt')
+    .arcDashLength('dashLen')
+    .arcDashGap('dashGap')
+    .arcDashAnimateTime('time');
 }
 
 function drawChart() {
@@ -561,10 +590,11 @@ function updateUI() {
 }
 
 function render() {
-  if(!DATOS) return;
-  renderHeatToOffscreen();
-  stylePeruDepartments();
-  updatePortsLayer();
+  if (!DATOS) return;
+  updateHeatSphereTexture();
+  world.polygonsData($('chkPeru').checked ? peruFeatures : []);
+  world.pointsData($('chkTide').checked ? PUERTOS : []);
+  updateGlobeVectors();
   drawChart();
   updateUI();
 }
@@ -627,14 +657,17 @@ async function initApp() {
     $('metaTag').textContent = 'Ejecuta python actualizar_datos.py';
   }
   fetchLivePeruMarine();
-  requestAnimationFrame(animateOverlay);
 }
 
 $('selDep').onchange = e => { S.dep = e.target.value; render(); };
-$('btnZoomPeru').onclick = () => map.flyTo([-9.5, -75.5], window.innerWidth <= 640 ? 4 : 5, {duration: 1.0});
-$('btnZoomPac').onclick = () => map.flyTo([-6.5, -112], window.innerWidth <= 640 ? 3 : 4, {duration: 1.0});
-$('chkPeru').onchange = e => { if (!peruLayer) return; e.target.checked ? peruLayer.addTo(map) : peruLayer.remove(); };
-$('chkTide').onchange = updatePortsLayer;
+$('btnZoomPeru').onclick = () => world.pointOfView({ lat: -9.5, lng: -76.5, altitude: isMobile ? 1.15 : 0.85 }, 1100);
+$('btnZoomPac').onclick  = () => world.pointOfView({ lat: -4.0, lng: -125.0, altitude: isMobile ? 2.1 : 1.75 }, 1100);
+$('chkPeru').onchange = render;
+$('chkTide').onchange = render;
+$('chkHeat').onchange = () => { if (heatMesh) heatMesh.visible = $('chkHeat').checked; };
+$('chkWind').onchange = updateGlobeVectors;
+$('chkVec').onchange  = updateGlobeVectors;
+
 $('slider').oninput = e => setMonth(+e.target.value);
 $('play').onclick = () => play(!S.playing);
 $('prev').onclick = () => { play(false); setMonth(S.m - 1); };
@@ -647,17 +680,7 @@ $('chart').onclick = e => {
   if (S.v === 'fc' && targetM < FC0) { S.v = 'anom'; document.querySelector('input[name=v][value="anom"]').checked = true; syncSlider(); }
   setMonth(targetM);
 };
-map.on('mousemove', e => {
-  if (!DATOS || window.innerWidth <= 640) return;
-  const {lat, lng} = e.latlng, {land, anom, sst} = evalOceanPoint(lng, lat, S.m);
-  const t = $('tip');
-  if (land) { t.style.display = 'none'; return; }
-  const val = S.v === 'sst' ? sst : anom;
-  t.style.display = 'block';
-  t.textContent = `${Math.abs(lat).toFixed(1)}°${lat<0?'S':'N'}, ${Math.abs(lng).toFixed(1)}°${lng<0?'O':'E'} · ${S.v==='sst'?'TSM':'Anom.'}: ${val>0 && S.v!=='sst'?'+':''}${val.toFixed(2)} °C`;
-  t.style.left = (e.containerPoint.x + 14) + 'px'; t.style.top = (e.containerPoint.y + 14) + 'px';
-});
-map.on('mouseout', () => { $('tip').style.display = 'none'; });
+
 addEventListener('keydown', e => {
   if (e.code === 'ArrowLeft') { play(false); setMonth(S.m - 1); }
   else if (e.code === 'ArrowRight') { play(false); setMonth(S.m + 1); }
@@ -665,11 +688,12 @@ addEventListener('keydown', e => {
 });
 addEventListener('resize', () => {
   drawChart();
-  map.invalidateSize();
+  world.width(wrapEl.clientWidth).height(wrapEl.clientHeight);
 });
 
 initApp();
 </script>
+
 <!-- ===== ORExIS · Asistente virtual ===== -->
 <style>
 #oxOrb{position:fixed;right:14px;bottom:calc(var(--ox-b,70px) + 12px);width:64px;height:64px;z-index:1000;border:0;padding:0;background:none;border-radius:50%;cursor:pointer;filter:drop-shadow(0 6px 14px rgba(0,0,0,.55));transition:transform .2s}
@@ -722,19 +746,19 @@ initApp();
 const LC={es:'es-ES',en:'en-US',de:'de-DE',fr:'fr-FR',pt:'pt-BR',it:'it-IT'};
 const TEMAS=[
 {id:'intro',sel:'header h1',
- es:'Hola, soy Orexis. Aquí ves el fenómeno El Niño: cuando el mar frente a Perú se calienta más de lo normal, cambian las lluvias y las mareas.',
- en:"Hi, I'm Orexis. This page shows El Niño: when the sea off Peru gets warmer than normal, rainfall and tides change.",
- de:'Hallo, ich bin Orexis. Hier siehst du El Niño: Wird das Meer vor Peru wärmer als normal, verändern sich Regen und Gezeiten.',
- fr:"Bonjour, je suis Orexis. Ici, tu vois El Niño : quand la mer au large du Pérou se réchauffe plus que d'habitude, les pluies et les marées changent.",
- pt:'Olá, eu sou a Orexis. Aqui você vê o El Niño: quando o mar diante do Peru esquenta mais que o normal, chuvas e marés mudam.',
- it:'Ciao, sono Orexis. Qui vedi El Niño: quando il mare davanti al Perù si scalda più del normale, cambiano piogge e maree.'},
+ es:'Hola, soy Orexis. Aquí ves el fenómeno El Niño sobre el globo terráqueo: cuando el mar frente a Perú se calienta más de lo normal, cambian las lluvias y las mareas.',
+ en:"Hi, I'm Orexis. This globe shows El Niño: when the sea off Peru gets warmer than normal, rainfall and tides change.",
+ de:'Hallo, ich bin Orexis. Dieser Globus zeigt El Niño: Wird das Meer vor Peru wärmer als normal, verändern sich Regen und Gezeiten.',
+ fr:"Bonjour, je suis Orexis. Ce globe montre El Niño : quand la mer au large du Pérou se réchauffe plus que d'habitude, les pluies et les marées changent.",
+ pt:'Olá, eu sou a Orexis. Este globo mostra o El Niño: quando o mar diante do Peru esquenta mais que o normal, chuvas e marés mudam.',
+ it:'Ciao, sono Orexis. Questo globo mostra El Niño: quando il mare davanti al Perù si scalda più del normale, cambiano piogge e maree.'},
 {id:'mapa',sel:'#wrap',
- es:'El mapa muestra la temperatura del Pacífico. Los colores cálidos indican agua más caliente de lo normal y los fríos, más fría. Las flechas muestran vientos y corrientes.',
- en:'The map shows Pacific Ocean temperature. Warm colors mean water hotter than normal, cool colors mean colder. Arrows show winds and currents.',
- de:'Die Karte zeigt die Temperatur des Pazifiks. Warme Farben bedeuten wärmeres Wasser als normal, kühle kälteres. Pfeile zeigen Winde und Strömungen.',
- fr:'La carte montre la température du Pacifique. Les couleurs chaudes indiquent une eau plus chaude que la normale, les froides une eau plus froide. Les flèches montrent vents et courants.',
- pt:'O mapa mostra a temperatura do Pacífico. Cores quentes indicam água mais quente que o normal e frias, mais fria. As setas mostram ventos e correntes.',
- it:'La mappa mostra la temperatura del Pacifico. I colori caldi indicano acqua più calda del normale, quelli freddi più fredda. Le frecce mostrano venti e correnti.'},
+ es:'Puedes girar y acercar el planeta libremente. Los colores cálidos indican agua más caliente de lo normal y los arcos muestran vientos, corrientes y la onda Kelvin.',
+ en:'You can freely rotate and zoom the planet. Warm colors mean water hotter than normal, and the arcs show winds, currents and the Kelvin wave.',
+ de:'Du kannst den Planeten frei drehen und zoomen. Warme Farben bedeuten wärmeres Wasser als normal, Bögen zeigen Winde, Strömungen und die Kelvinwelle.',
+ fr:'Tu peux faire tourner et zoomer la planète librement. Les couleurs chaudes indiquent une eau plus chaude que la normale et les arcs montrent vents, courants et onde de Kelvin.',
+ pt:'Você pode girar e aproximar o planeta livremente. Cores quentes indicam água mais quente que o normal e os arcos mostram ventos, correntes e a onda Kelvin.',
+ it:'Puoi ruotare e ingrandire il pianeta liberamente. I colori caldi indicano acqua più calda del normale e gli archi mostrano venti, correnti e onda di Kelvin.'},
 {id:'indicadores',sel:'.stats',
  es:'Estos números miden el fenómeno. Niño 3.4 e ICEN son la temperatura del mar respecto a lo normal; si pasan de +0,5 °C, hay un episodio El Niño. SOI mide la presión del aire.',
  en:'These numbers measure the phenomenon. Niño 3.4 and ICEN are sea temperature compared to normal; above +0.5 °C means an El Niño event. SOI measures air pressure.',
@@ -743,12 +767,12 @@ const TEMAS=[
  pt:'Esses números medem o fenômeno. Niño 3.4 e ICEN indicam a temperatura do mar em relação ao normal; acima de +0,5 °C há El Niño. O SOI mede a pressão do ar.',
  it:"Questi numeri misurano il fenomeno. Niño 3.4 e ICEN indicano la temperatura del mare rispetto al normale; oltre +0,5 °C c'è El Niño. Il SOI misura la pressione dell'aria."},
 {id:'lluvia',sel:'.legend',
- es:'Cada departamento se pinta según la lluvia del mes: azul oscuro es poca y morado es muchísima. Toca cualquier departamento para ver su detalle.',
- en:'Each department is colored by monthly rainfall: dark blue is little, purple is a lot. Tap any department to see its details.',
- de:'Jedes Departement ist nach dem Monatsregen eingefärbt: dunkelblau ist wenig, lila sehr viel. Tippe auf ein Departement für Details.',
- fr:'Chaque département est coloré selon la pluie du mois : bleu foncé, peu ; violet, énormément. Touche un département pour le détail.',
- pt:'Cada departamento é colorido pela chuva do mês: azul-escuro é pouca e roxo é muitíssima. Toque em um departamento para ver o detalhe.',
- it:'Ogni dipartimento è colorato in base alla pioggia del mese: blu scuro è poca, viola moltissima. Tocca un dipartimento per i dettagli.'},
+ es:'Cada departamento del Perú se pinta según la lluvia del mes: azul oscuro es poca y morado es muchísima. Toca cualquier departamento en el globo para ver su detalle.',
+ en:'Each department of Peru is colored by monthly rainfall: dark blue is little, purple is a lot. Tap any department on the globe to see its details.',
+ de:'Jedes Departement Perus ist nach dem Monatsregen eingefärbt: dunkelblau ist wenig, lila sehr viel. Tippe auf ein Departement auf dem Globus für Details.',
+ fr:'Chaque département du Pérou est coloré selon la pluie du mois : bleu foncé, peu ; violet, énormément. Touche un département sur le globe pour le détail.',
+ pt:'Cada departamento do Peru é colorido pela chuva do mês: azul-escuro é pouca e roxo é muitíssima. Toque em um departamento no globo para ver o detalhe.',
+ it:'Ogni dipartimento del Perù è colorato in base alla pioggia del mese: blu scuro è poca, viola moltissima. Tocca un dipartimento sul globo per i dettagli.'},
 {id:'mareas',sel:'.live-box',
  es:'Aquí ves en vivo la temperatura del mar y el oleaje en Paita, Callao e Ilo. Con El Niño el nivel del mar sube y las olas crecen en la costa.',
  en:'Here you see live sea temperature and waves at Paita, Callao and Ilo. During El Niño the sea level rises and waves grow along the coast.',
