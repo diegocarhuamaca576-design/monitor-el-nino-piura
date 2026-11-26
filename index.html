@@ -408,7 +408,7 @@ function evalOceanPoint(lon, lat, m) {
   const refCoast = coastLon !== null ? coastLon : -80.5;
   const distOffshore = Math.max(0, refCoast - L); // Distancia en grados desde la costa hacia el mar
   const latPeruFactor = Math.exp(-(((lat + 7.2) / 7.8) ** 2)) * (lat <= 1.5 && lat >= -20 ? 1 : 0.15);
-  const coastalStrip = Math.exp(-((distOffshore / (2.6 + 1.8 * Math.exp(-((lat + 5) / 4) ** 2))) ** 2)) * latPeruFactor;
+  const coastalStrip = Math.exp(-Math.pow(distOffshore / (2.6 + 1.8 * Math.exp(-Math.pow((lat + 5) / 4, 2))), 2)) * latPeruFactor;
 
   // 3. Climatología base + afloramiento de Humboldt pegado a la costa
   const season = 1.4 * (lat / 35) * Math.cos(2 * Math.PI * (mo - 7.5) / 12);
