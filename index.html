@@ -6,6 +6,7 @@
 <title>Monitor Nacional El Niño · Perú, Lluvias & Mareas (2000–2027)</title>
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script src="https://unpkg.com/globe.gl@2.32.1/dist/globe.gl.min.js"></script>
+<script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <style>
 :root{
   --bg:#090f1a;--panel:#0f1726;--ink:#e6edf6;--mut:#8fa2bd;--line:#1e2d47;
@@ -247,10 +248,57 @@ const PUERTOS = [
   { name: 'Ilo (Sur)', lat: -17.64, lng: -71.36, factor: 0.65 }
 ];
 
-/* ===== MOTOR TÉRMICO GLOBAL (TEXTURA ESFÉRICA 360° ALINEADA AL PACÍFICO) ===== */
+/* ===== MÁSCARA MUNDIAL REAL DE CONTINENTES E ISLAS (720x360 = 0.5°) ===== */
+const GRID_W = 720, GRID_H = 360;
+const landMask = new Uint8Array(GRID_W * GRID_H); // 1 = tierra, 0 = océano
+
+async function buildGlobalLandMask() {
+  try {
+    const res = await fetch('https://unpkg.com/world-atlas@2.0.2/land-110m.json');
+    const topo = await res.json();
+    const landGeo = topojson.feature(topo, topo.objects.land);
+
+    const mc = document.createElement('canvas');
+    mc.width = GRID_W; mc.height = GRID_H;
+    const mctx = mc.getContext('2d');
+    mctx.fillStyle = '#000';
+    mctx.fillRect(0, 0, GRID_W, GRID_H);
+    mctx.fillStyle = '#fff';
+
+    const drawRing = ring => {
+      mctx.beginPath();
+      ring.forEach(([lon, lat], idx) => {
+        const x = (lon + 180) / 360 * GRID_W;
+        const y = (90 - lat) / 180 * GRID_H;
+        if (idx === 0) mctx.moveTo(x, y);
+        else mctx.lineTo(x, y);
+      });
+      mctx.closePath();
+      mctx.fill();
+    };
+
+    const features = landGeo.type === 'FeatureCollection' ? landGeo.features : [landGeo];
+    features.forEach(f => {
+      const geom = f.geometry;
+      if (!geom) return;
+      if (geom.type === 'Polygon') geom.coordinates.forEach(drawRing);
+      else if (geom.type === 'MultiPolygon') geom.coordinates.forEach(poly => poly.forEach(drawRing));
+    });
+
+    const data = mctx.getImageData(0, 0, GRID_W, GRID_H).data;
+    for (let p = 0; p < GRID_W * GRID_H; p++) {
+      landMask[p] = data[p * 4] > 128 ? 1 : 0;
+    }
+    if (DATOS) updateHeatSphereTexture();
+  } catch (e) {
+    console.warn('No se pudo cargar máscara global de tierras:', e);
+  }
+}
+
+/* ===== MOTOR TÉRMICO OCEÁNICO GLOBAL (360° SIN CORTES NI INVASIÓN DE CONTINENTES) ===== */
 const RAMPS = {
-  anom:{min:-2.5,max:4.5,title:'Anomalía TSM Pacífico (°C)',stops:[[-2.5,'#1e3a8a'],[-1.2,'#3b82f6'],[-0.4,'#93c5fd'],[0,'#1e293b'],[0.5,'#fde047'],[1.5,'#f97316'],[2.8,'#dc2626'],[4.5,'#7f1d1d']]},
-  sst: {min:15,max:31,title:'Temperatura Superficial (°C)',stops:[[15,'#1e3a8a'],[20,'#06b6d4'],[24,'#84cc16'],[27,'#eab308'],[29,'#f97316'],[31,'#b91c1c']]}
+  anom:{min:-2.5,max:4.5,title:'Anomalía TSM Global / Pacífico (°C)',stops:[[-2.5,'#1e3a8a'],[-1.2,'#3b82f6'],[-0.4,'#93c5fd'],[0,'#1e293b'],[0.5,'#fde047'],[1.5,'#f97316'],[2.8,'#dc2626'],[4.5,'#7f1d1d']]},
+  sst: {min:10,max:31,title:'Temperatura Superficial del Mar (°C)',stops:[[10,'#1e3a8a'],[17,'#0284c7'],[22,'#06b6d4'],[25,'#84cc16'],[28,'#eab308'],[30,'#f97316'],[31,'#b91c1c']]}
 };
 const hex = h => [1,3,5].map(i => parseInt(h.substr(i,2),16));
 Object.values(RAMPS).forEach(r => {
@@ -276,53 +324,48 @@ function southAmericaCoastLon(lat) {
   return null;
 }
 
-function isPacificOcean(lon, lat) {
-  if (lon >= 135) {
-    if (lat < -11 && lat >= -40 && lon <= 154) return false;
-    return true;
-  }
-  if (lon < 0) {
-    if (lat > 7.5) {
-      const caCoast = -78.0 - (lat - 7.5) * 1.65;
-      return lon < caCoast - 0.3;
-    }
-    const saCoast = southAmericaCoastLon(lat);
-    if (saCoast !== null) return lon < saCoast - 0.25;
-  }
-  return false;
-}
-
-function evalOceanPoint(lon, lat, m) {
-  if (!isPacificOcean(lon, lat)) return { land: true, anom: 0, sst: 0 };
-  let L = lon > 0 ? lon - 360 : lon;
-
-  const coastLon = southAmericaCoastLon(lat);
+function evalGlobalOceanPoint(lon, lat, m) {
   const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
+  const season = 1.6 * (lat / 35) * Math.cos(2 * Math.PI * (mo - 7.5) / 12);
 
-  const eastWedge = Math.min(1, Math.max(0, (L + 195) / 115));
-  const meridionalWidth = 4.2 + 4.8 * eastWedge;
-  const eqBand = Math.exp(-Math.pow(lat / meridionalWidth, 2));
-  const tiw = 0.28 * Math.sin(L * 0.38 + m * 1.15) * Math.exp(-Math.pow((lat - 2.4) / 2.6, 2));
+  // Detectar si el punto está en la cuenca del Océano Pacífico (120°E hacia el este hasta la costa americana)
+  const saCoast = southAmericaCoastLon(lat);
+  const americasWestBound = lat > 7.5 ? (-78.0 - (lat - 7.5) * 1.65) : (saCoast !== null ? saCoast : -75.0);
+  const inPacificBasin = (lon >= 120) || (lon < americasWestBound);
 
-  const refCoast = coastLon !== null ? coastLon : -80.5;
-  const distOffshore = Math.max(0, refCoast - L);
-  const latPeruFactor = Math.exp(-Math.pow((lat + 7.2) / 7.8, 2)) * (lat <= 1.5 && lat >= -20 ? 1 : 0.15);
-  const coastalStrip = Math.exp(-Math.pow(distOffshore / (2.6 + 1.8 * Math.exp(-Math.pow((lat + 5) / 4, 2))), 2)) * latPeruFactor;
+  if (inPacificBasin) {
+    let L = lon > 0 ? lon - 360 : lon;
+    const eastWedge = Math.min(1, Math.max(0, (L + 195) / 115));
+    const meridionalWidth = 4.2 + 4.8 * eastWedge;
+    const eqBand = Math.exp(-Math.pow(lat / meridionalWidth, 2));
+    const tiw = 0.28 * Math.sin(L * 0.38 + m * 1.15) * Math.exp(-Math.pow((lat - 2.4) / 2.6, 2));
 
-  const season = 1.4 * (lat / 35) * Math.cos(2 * Math.PI * (mo - 7.5) / 12);
-  const humboldt = -2.6 * coastalStrip;
-  const clim = 28.8 - 0.005 * lat * lat - 2.9 * eastWedge * eqBand + humboldt + season;
+    const refCoast = saCoast !== null ? saCoast : -80.5;
+    const distOffshore = Math.max(0, refCoast - L);
+    const latPeruFactor = Math.exp(-Math.pow((lat + 7.2) / 7.8, 2)) * (lat <= 1.5 && lat >= -20 ? 1 : 0.15);
+    const coastalStrip = Math.exp(-Math.pow(distOffshore / (2.6 + 1.8 * Math.exp(-Math.pow((lat + 5) / 4, 2))), 2)) * latPeruFactor;
 
-  let a = e34 * (Math.exp(-Math.pow((L + 132) / 38, 2)) * eqBand - 0.38 * Math.exp(-Math.pow((L + 205) / 22, 2) - Math.pow(lat / 14, 2)));
-  a += e12 * (1.05 * coastalStrip + 0.42 * Math.exp(-Math.pow((L + 87) / 9, 2) - Math.pow((lat + 2.5) / 4.5, 2)));
-  a += tiw * Math.max(0.25, Math.abs(e34));
-  a += 0.16 * Math.sin(L * 0.27 + m * 0.55) * Math.cos(lat * 0.34 - m * 0.3);
+    const humboldt = -2.6 * coastalStrip;
+    const clim = 29.0 - 0.0055 * lat * lat - 2.8 * eastWedge * eqBand + humboldt + season;
 
-  return { land: false, anom: a, sst: clim + a };
+    let a = e34 * (Math.exp(-Math.pow((L + 132) / 42, 2)) * eqBand - 0.35 * Math.exp(-Math.pow((L + 210) / 24, 2) - Math.pow(lat / 14, 2)));
+    a += e12 * (1.05 * coastalStrip + 0.42 * Math.exp(-Math.pow((L + 87) / 9, 2) - Math.pow((lat + 2.5) / 4.5, 2)));
+    a += tiw * Math.max(0.25, Math.abs(e34));
+    a += 0.16 * Math.sin(L * 0.27 + m * 0.55) * Math.cos(lat * 0.34 - m * 0.3);
+
+    return { anom: a, sst: clim + a };
+  }
+
+  // Océanos Atlántico e Índico (teleconexión ENSO suavizada + climatología latitudinal global)
+  const climOther = 28.4 - 0.0058 * lat * lat + season;
+  const tele = e34 * 0.28 * Math.exp(-Math.pow(lat / 16, 2)) * Math.cos((lon - 40) * 0.045);
+  const wave = 0.18 * Math.sin(lon * 0.18 + m * 0.4) * Math.cos(lat * 0.25);
+  const aOther = tele + wave;
+  return { anom: aOther, sst: climOther + aOther };
 }
 
 const texCanvas = document.createElement('canvas');
-texCanvas.width = 360; texCanvas.height = 180;
+texCanvas.width = GRID_W; texCanvas.height = GRID_H;
 const tctx = texCanvas.getContext('2d');
 const heatTexture = new THREE.CanvasTexture(texCanvas);
 heatTexture.colorSpace = THREE.SRGBColorSpace;
@@ -331,33 +374,30 @@ let heatMesh = null;
 
 function updateHeatSphereTexture() {
   if (!DATOS) return;
-  const W = 360, H = 180;
   const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
-  const img = tctx.createImageData(W, H);
+  const img = tctx.createImageData(GRID_W, GRID_H);
 
-  for (let j = 0; j < H; j++) {
-    const lat = 90 - (j + 0.5);
-    const bandFade = lat > 32 || lat < -42 ? 0 : Math.min(1, (32 - lat) / 6, (lat + 42) / 6);
-    for (let i = 0; i < W; i++) {
-      const lon = -180 + (i + 0.5);
-      const k = (j * W + i) * 4;
-      if (bandFade <= 0.01) {
+  for (let j = 0; j < GRID_H; j++) {
+    const lat = 90 - (j + 0.5) * (180 / GRID_H);
+    // Difuminado suave hacia los polos (de ±58° a ±68°)
+    const polarFade = Math.abs(lat) > 68 ? 0 : Math.min(1, (68 - Math.abs(lat)) / 10);
+    for (let i = 0; i < GRID_W; i++) {
+      const p = j * GRID_W + i;
+      const k = p * 4;
+      // Si es tierra según el mapa mundial real, dejar transparente
+      if (landMask[p] === 1 || polarFade <= 0.01) {
         img.data[k + 3] = 0;
         continue;
       }
-      const westFade = lon >= 135 ? Math.min(1, (lon - 135) / 14) : 1;
-      const res = evalOceanPoint(lon, lat, S.m);
-      if (res.land) {
-        img.data[k + 3] = 0;
-        continue;
-      }
+      const lon = -180 + (i + 0.5) * (360 / GRID_W);
+      const res = evalGlobalOceanPoint(lon, lat, S.m);
       const val = S.v === 'sst' ? res.sst : res.anom;
       const idx = Math.min(511, Math.max(0, Math.floor((val - r.min) / (r.max - r.min) * 511)));
       img.data[k]     = r.lut[idx * 3];
       img.data[k + 1] = r.lut[idx * 3 + 1];
       img.data[k + 2] = r.lut[idx * 3 + 2];
-      const baseAlpha = S.v === 'sst' ? 120 : Math.min(205, Math.max(18, Math.abs(val) * 105));
-      img.data[k + 3] = Math.round(baseAlpha * bandFade * westFade);
+      const baseAlpha = S.v === 'sst' ? 125 : Math.min(205, Math.max(14, Math.abs(val) * 105));
+      img.data[k + 3] = Math.round(baseAlpha * polarFade);
     }
   }
   tctx.putImageData(img, 0, 0);
@@ -379,7 +419,7 @@ const world = Globe()( $('globeViz') )
 
 setTimeout(() => {
   const globeRadius = world.getGlobeRadius();
-  const geo = new THREE.SphereGeometry(globeRadius * 1.004, 72, 48);
+  const geo = new THREE.SphereGeometry(globeRadius * 1.004, 96, 64);
   const mat = new THREE.MeshBasicMaterial({
     map: heatTexture,
     transparent: true,
@@ -526,7 +566,6 @@ function drawChart() {
   const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
   const X = m => m/(N-1)*w, Y = v => h - (v + 2.2)/6.6*h;
 
-  // Zona sombreada exclusiva de pronóstico (a partir de MAX_HIST + 1)
   if (MAX_HIST + 1 < N) {
     g.fillStyle = 'rgba(249,115,22,.16)';
     g.fillRect(X(MAX_HIST + 1), 0, w - X(MAX_HIST + 1), h);
@@ -593,7 +632,6 @@ function render() {
   updateUI();
 }
 
-/* Límite dinámico: Histórico/Oficial llega hasta hoy (MAX_HIST); Pronóstico arranca después (MAX_HIST + 1) */
 function bounds() {
   if (S.v === 'fc') {
     const startFc = Math.min(N - 1, MAX_HIST + 1);
@@ -644,6 +682,7 @@ async function fetchLivePeruMarine() {
 }
 
 async function initApp() {
+  buildGlobalLandMask();
   loadPeruDepartments();
   try {
     const res = await fetch('./datos_monitor.json?v=' + Date.now());
@@ -652,10 +691,8 @@ async function initApp() {
     N = DATOS.nino34.length;
     FC0 = DATOS.meta.fc0;
 
-    // Calcular índice correspondiente a la fecha actual real (ej. Nov 2026 -> 26*12 + 10)
     const now = new Date();
     const todayIdx = (now.getFullYear() - START_YEAR) * 12 + now.getMonth();
-    // El límite oficial llega hasta la fecha actual (tope en el último dato disponible)
     MAX_HIST = Math.max(0, Math.min(N - 1, Math.min(FC0 - 1, todayIdx)));
     S.m = MAX_HIST;
 
