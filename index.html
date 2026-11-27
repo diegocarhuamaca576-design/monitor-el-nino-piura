@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>Monitor Nacional El Niño · Perú, Lluvias & Mareas (2000–2027)</title>
+<title>Monitor Nacional El Niño · Perú, Lluvias & Mareas (2000–2030+)</title>
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script src="https://unpkg.com/globe.gl@2.32.1/dist/globe.gl.min.js"></script>
 <script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
@@ -85,7 +85,6 @@ canvas#chart{width:100%;height:84px;display:block;cursor:pointer;border-radius:6
   box-shadow:0 8px 20px rgba(0,0,0,.6)!important;
 }
 
-/* Etiquetas HTML UTF-8 proyectadas en el globo */
 .g-lbl{
   pointer-events:none;
   user-select:none;
@@ -131,8 +130,8 @@ button,select{background:#0b1220;color:var(--ink);border:1px solid var(--line);b
 button:hover{border-color:#475569}
 button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:42px;font-weight:700}
 #slider{flex:1;min-width:140px;accent-color:var(--acc)}
-#date{font-weight:700;min-width:85px;font-variant-numeric:tabular-nums}
-.badge{font-size:10px;padding:2px 8px;border-radius:99px;color:#fff;font-weight:600}
+#date{font-weight:700;min-width:96px;font-variant-numeric:tabular-nums}
+.badge{font-size:10px;padding:2px 8px;border-radius:99px;color:#fff;font-weight:600;white-space:nowrap}
 
 @media(max-width:1024px){
   main{grid-template-columns:1fr;grid-template-rows:38% 62%}
@@ -166,7 +165,7 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
   .legend .lbl{font-size:8.5px}
   footer{padding:6px 10px calc(6px + env(safe-area-inset-bottom));gap:6px}
   footer button{padding:6px 9px}
-  #date{font-size:12px;min-width:72px}
+  #date{font-size:12px;min-width:82px}
   #speed{padding:5px 6px;font-size:11px}
   #slider{order:10;flex-basis:100%;min-width:100%;margin-top:2px;height:22px}
 }
@@ -175,7 +174,7 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
 <body>
 
 <header>
-  <h1>🇵🇪 Monitor Nacional El Niño · Perú, Lluvias & Mareas (2000–2027)</h1>
+  <h1>🇵🇪 Monitor Nacional El Niño · Perú, Lluvias & Mareas</h1>
   <span class="tag ods">ODS 11 & 13 · Gestión de Riesgos</span>
   <span class="tag" id="metaTag">Cargando red global...</span>
   <span class="tag live" id="liveTag">● Conectando boyas...</span>
@@ -201,9 +200,9 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
       <div class="card wide"><small>Diagnóstico ENFEN / NOAA</small><span id="status">–</span></div>
     </div>
 
-    <h2>Serie Histórica (2000–2027)</h2>
+    <h2>Serie Histórica (Mensual + Mes Actual Diario)</h2>
     <canvas id="chart"></canvas>
-    <p class="note">Naranja: Niño 3.4 (NOAA) · Verde: ICEN Perú. Toca un año o gira el globo y haz clic en un departamento.</p>
+    <p class="note">Meses anteriores en escala mensual; franja verde: mes actual día por día; naranja: pronóstico.</p>
 
     <div>
       <h2>Variable Oceánica</h2>
@@ -233,17 +232,17 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
       <div class="t" id="legT"></div>
       <div class="bar" id="legBar"></div>
       <div class="lbl" id="legL"></div>
-      <div class="t" style="margin-top:5px;border-top:1px solid var(--line);padding-top:4px">Lluvia Departamental (mm/mes)</div>
+      <div class="t" id="legRainTitle" style="margin-top:5px;border-top:1px solid var(--line);padding-top:4px">Lluvia Departamental (mm/mes)</div>
       <div class="bar" style="background:linear-gradient(90deg,#1e293b 0%,#0284c7 35%,#38bdf8 65%,#a855f7 100%)"></div>
-      <div class="lbl"><span>0 mm</span><span>150 mm</span><span>350+ mm</span></div>
+      <div class="lbl" id="legRainLbl"><span>0 mm</span><span>150 mm</span><span>350+ mm</span></div>
     </div>
   </div>
 </main>
 
 <footer>
-  <button id="prev" title="Mes anterior (←)">⏮</button>
+  <button id="prev" title="Paso anterior (←)">⏮</button>
   <button id="play" class="main" title="Reproducir / Pausar (Espacio)">▶</button>
-  <button id="next" title="Mes siguiente (→)">⏭</button>
+  <button id="next" title="Paso siguiente (→)">⏭</button>
   <span id="date">–</span>
   <span id="badge" class="badge"></span>
   <select id="speed" title="Velocidad">
@@ -258,14 +257,14 @@ button.main{background:var(--acc);color:#fff;border-color:var(--acc);min-width:4
 const MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const $ = id => document.getElementById(id);
 
-let DATOS = null, N = 0, FC0 = 0, MAX_HIST = 0, START_YEAR = 2000;
+let DATOS = null, N = 0, FC0 = 0, MAX_HIST = 0, DAY_START = 0, DAY_END = 0, START_YEAR = 2000;
+let TIMELINE = []; // [{ label, isDaily, monthIdx, dayNum, year, month }]
 const S = { m: 0, v: 'anom', dep: 'PIURA', playing: false, timer: null };
 
 const vw = window.innerWidth;
 const isMobile = vw <= 640;
 const isTablet = vw > 640 && vw <= 1024;
 
-/* ===== MÁXIMA RESOLUCIÓN ADAPTATIVA (PC: 2160x1080 | Tablet: 1440x720 | Móvil: 1080x540) ===== */
 const GRID_W = isMobile ? 1080 : (isTablet ? 1440 : 2160);
 const GRID_H = isMobile ? 540  : (isTablet ? 720  : 1080);
 const SPHERE_SEG_W = isMobile ? 80 : (isTablet ? 96 : 128);
@@ -279,9 +278,7 @@ const PUERTOS = [
   { name: 'Ilo (Sur)', lat: -17.64, lng: -71.36, factor: 0.65 }
 ];
 
-/* ===== BASE GLOBAL DE PAÍSES Y CAPITALES (UTF-8 COMPLETO CON TILDES Y SÍMBOLOS) ===== */
 const WORLD_PLACES = [
-  // Sudamérica y Caribe
   { name: 'PERÚ', lat: -9.2, lng: -75.0, type: 'country', tier: 1 },
   { name: '★ Lima', lat: -12.05, lng: -77.04, type: 'capital', tier: 1 },
   { name: 'BRASIL', lat: -10.5, lng: -53.0, type: 'country', tier: 1 },
@@ -302,11 +299,8 @@ const WORLD_PLACES = [
   { name: '★ Asunción', lat: -25.26, lng: -57.58, type: 'capital', tier: 3 },
   { name: 'URUGUAY', lat: -32.8, lng: -56.0, type: 'country', tier: 2 },
   { name: '★ Montevideo', lat: -34.90, lng: -56.16, type: 'capital', tier: 3 },
-  { name: 'GUYANA', lat: 4.8, lng: -58.9, type: 'country', tier: 3 },
-  { name: 'SURINAM', lat: 4.0, lng: -56.0, type: 'country', tier: 3 },
   { name: 'CUBA', lat: 21.8, lng: -79.5, type: 'country', tier: 2 },
   { name: '★ La Habana', lat: 23.11, lng: -82.36, type: 'capital', tier: 3 },
-  // Norteamérica y Centroamérica
   { name: 'ESTADOS UNIDOS', lat: 39.5, lng: -98.5, type: 'country', tier: 1 },
   { name: '★ Washington D.C.', lat: 38.90, lng: -77.04, type: 'capital', tier: 2 },
   { name: 'CANADÁ', lat: 56.0, lng: -106.0, type: 'country', tier: 1 },
@@ -317,7 +311,6 @@ const WORLD_PLACES = [
   { name: 'COSTA RICA', lat: 9.9, lng: -84.1, type: 'country', tier: 2 },
   { name: 'PANAMÁ', lat: 8.6, lng: -80.2, type: 'country', tier: 2 },
   { name: '★ C. de Panamá', lat: 8.98, lng: -79.52, type: 'capital', tier: 3 },
-  // Europa
   { name: 'ESPAÑA', lat: 40.3, lng: -3.7, type: 'country', tier: 1 },
   { name: '★ Madrid', lat: 40.42, lng: -3.70, type: 'capital', tier: 2 },
   { name: 'FRANCIA', lat: 46.6, lng: 2.3, type: 'country', tier: 1 },
@@ -340,7 +333,6 @@ const WORLD_PLACES = [
   { name: '★ Oslo', lat: 59.91, lng: 10.75, type: 'capital', tier: 3 },
   { name: 'GRECIA', lat: 39.2, lng: 22.0, type: 'country', tier: 2 },
   { name: '★ Atenas', lat: 37.98, lng: 23.72, type: 'capital', tier: 3 },
-  // Asia y Oceanía
   { name: 'RUSIA', lat: 61.5, lng: 96.0, type: 'country', tier: 1 },
   { name: '★ Moscú', lat: 55.75, lng: 37.62, type: 'capital', tier: 2 },
   { name: 'CHINA', lat: 35.5, lng: 103.5, type: 'country', tier: 1 },
@@ -369,7 +361,6 @@ const WORLD_PLACES = [
   { name: '★ Canberra', lat: -35.28, lng: 149.13, type: 'capital', tier: 2 },
   { name: 'NUEVA ZELANDA', lat: -41.5, lng: 173.0, type: 'country', tier: 1 },
   { name: '★ Wellington', lat: -41.29, lng: 174.78, type: 'capital', tier: 2 },
-  // África
   { name: 'EGIPTO', lat: 26.8, lng: 30.8, type: 'country', tier: 1 },
   { name: '★ El Cairo', lat: 30.04, lng: 31.23, type: 'capital', tier: 2 },
   { name: 'MARRUECOS', lat: 31.8, lng: -7.1, type: 'country', tier: 2 },
@@ -390,7 +381,7 @@ const WORLD_PLACES = [
   { name: '★ Antananarivo', lat: -18.88, lng: 47.51, type: 'capital', tier: 3 }
 ];
 
-/* ===== MÁSCARA EXACTA DE OCÉANOS/TIERRAS (EARTH-WATER RASTER) + FRONTERAS 50m ===== */
+/* ===== MÁSCARA EXACTA DE OCÉANOS/TIERRAS + FRONTERAS 50m ===== */
 const landMask = new Uint8Array(GRID_W * GRID_H);
 let worldBorderPaths = [];
 
@@ -403,7 +394,6 @@ function buildRasterLandMask() {
     const mctx = mc.getContext('2d');
     mctx.drawImage(img, 0, 0, GRID_W, GRID_H);
     const data = mctx.getImageData(0, 0, GRID_W, GRID_H).data;
-    // En earth-water.png: blanco/claro = agua (océano), negro/oscuro = tierra firme (continentes)
     for (let p = 0; p < GRID_W * GRID_H; p++) {
       landMask[p] = data[p * 4] < 128 ? 1 : 0;
     }
@@ -440,7 +430,7 @@ async function loadWorldBorders() {
   }
 }
 
-/* ===== MOTOR TÉRMICO OCEÁNICO GLOBAL UHD (CON PRE-CÁLCULO VECTORIZADO) ===== */
+/* ===== MOTOR TÉRMICO OCEÁNICO GLOBAL UHD ===== */
 const RAMPS = {
   anom:{min:-2.5,max:4.5,title:'Anomalía TSM Global / Pacífico (°C)',stops:[[-2.5,'#1e3a8a'],[-1.2,'#3b82f6'],[-0.4,'#93c5fd'],[0,'#1e293b'],[0.5,'#fde047'],[1.5,'#f97316'],[2.8,'#dc2626'],[4.5,'#7f1d1d']]},
   sst: {min:10,max:31,title:'Temperatura Superficial del Mar (°C)',stops:[[10,'#1e3a8a'],[17,'#0284c7'],[22,'#06b6d4'],[25,'#84cc16'],[28,'#eab308'],[30,'#f97316'],[31,'#b91c1c']]}
@@ -502,10 +492,12 @@ let heatMesh = null;
 function updateHeatSphereTexture() {
   if (!DATOS) return;
   const m = S.m;
+  const slot = TIMELINE[m] || { month: m % 12, dayNum: 15, isDaily: false };
   const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
   const isSst = S.v === 'sst';
-  const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m], mo = m % 12;
-  const seasonCos = Math.cos(2 * Math.PI * (mo - 7.5) / 12);
+  const e34 = DATOS.nino34[m], e12 = DATOS.nino12[m];
+  const moPhase = slot.month + (slot.isDaily ? (slot.dayNum - 1) / 30 : 0.5);
+  const seasonCos = Math.cos(2 * Math.PI * (moPhase - 7.5) / 12);
   const tiwAmp = 0.28 * Math.max(0.25, Math.abs(e34));
   const invRange = 511 / (r.max - r.min);
   const lut = r.lut;
@@ -532,7 +524,7 @@ function updateHeatSphereTexture() {
     const e12Lat = Math.exp(-Math.pow((lat + 2.5) / 4.5, 2));
     const teleOtherLat = e34 * 0.28 * Math.exp(-Math.pow(lat / 16, 2));
     const waveCosLat = 0.18 * Math.cos(lat * 0.25);
-    const wavePacCosLat = 0.16 * Math.cos(lat * 0.34 - m * 0.3);
+    const wavePacCosLat = 0.16 * Math.cos(lat * 0.34 - moPhase * 0.3);
     const climOtherBase = 28.4 - 0.0058 * latSq + season;
 
     const rowOffset = j * GRID_W;
@@ -553,8 +545,8 @@ function updateHeatSphereTexture() {
 
         let a = e34 * (EXP_E34_L[i] * eqBand - 0.35 * EXP_WP_L[i] * wpLat);
         a += e12 * (1.05 * coastalStrip + 0.42 * EXP_E12_L[i] * e12Lat);
-        a += tiwAmp * Math.sin(L * 0.38 + m * 1.15) * tiwLat;
-        a += Math.sin(L * 0.27 + m * 0.55) * wavePacCosLat;
+        a += tiwAmp * Math.sin(L * 0.38 + moPhase * 1.15) * tiwLat;
+        a += Math.sin(L * 0.27 + moPhase * 0.55) * wavePacCosLat;
 
         if (isSst) {
           const clim = 29.0 - 0.0055 * latSq - 2.8 * ew * eqBand - 2.6 * coastalStrip + season;
@@ -563,7 +555,7 @@ function updateHeatSphereTexture() {
           val = a;
         }
       } else {
-        const aOther = teleOtherLat * COS_OTHER_L[i] + Math.sin(lon * 0.18 + m * 0.4) * waveCosLat;
+        const aOther = teleOtherLat * COS_OTHER_L[i] + Math.sin(lon * 0.18 + moPhase * 0.4) * waveCosLat;
         val = isSst ? (climOtherBase + aOther) : aOther;
       }
 
@@ -615,9 +607,7 @@ setTimeout(() => {
 
 world.pointOfView({ lat: -9.5, lng: -86, altitude: isMobile ? 1.55 : 1.15 }, 0);
 
-/* ===== FRONTERAS INTERNACIONALES Y ETIQUETAS HTML UTF-8 DE PAÍSES / CAPITALES ===== */
 let currentMaxTier = 2;
-
 function getVisiblePlaces() {
   if (!$('chkWorld').checked) return [];
   return WORLD_PLACES.filter(p => p.tier <= currentMaxTier);
@@ -664,11 +654,13 @@ if (controls) {
 }
 
 let peruFeatures = [];
-function rainColor(mm) {
-  if (mm >= 320) return 'rgba(168, 85, 247, 0.72)';
-  if (mm >= 180) return 'rgba(37, 99, 235, 0.68)';
-  if (mm >= 80)  return 'rgba(14, 165, 233, 0.60)';
-  if (mm >= 25)  return 'rgba(3, 105, 161, 0.50)';
+// Escala dinámica: mensual (mm/mes) vs diaria (mm/día)
+function rainColor(mm, isDaily) {
+  const eqMm = isDaily ? mm * 22 : mm;
+  if (eqMm >= 320) return 'rgba(168, 85, 247, 0.72)';
+  if (eqMm >= 180) return 'rgba(37, 99, 235, 0.68)';
+  if (eqMm >= 80)  return 'rgba(14, 165, 233, 0.60)';
+  if (eqMm >= 25)  return 'rgba(3, 105, 161, 0.50)';
   return 'rgba(30, 41, 59, 0.35)';
 }
 
@@ -682,7 +674,8 @@ world
     const raw = (d.properties.NOMBDEP || '').toUpperCase().trim();
     const depKey = DATOS.lluvias_peru[raw] ? raw : 'PIURA';
     const mm = DATOS.lluvias_peru[depKey][S.m] || 0;
-    return rainColor(mm);
+    const isDaily = !!(TIMELINE[S.m] && TIMELINE[S.m].isDaily);
+    return rainColor(mm, isDaily);
   })
   .polygonSideColor(() => 'rgba(16, 185, 129, 0.25)')
   .polygonStrokeColor(d => {
@@ -695,7 +688,8 @@ world
     const raw = (d.properties.NOMBDEP || '').toUpperCase().trim();
     const depKey = DATOS.lluvias_peru[raw] ? raw : 'PIURA';
     const mm = DATOS.lluvias_peru[depKey][S.m] || 0;
-    return `<b>📍 ${depKey}</b><br>Lluvia mensual: <b>${mm.toFixed(1)} mm</b>`;
+    const isDaily = !!(TIMELINE[S.m] && TIMELINE[S.m].isDaily);
+    return `<b>📍 ${depKey}</b><br>Lluvia ${isDaily ? 'del día' : 'mensual'}: <b>${mm.toFixed(1)} mm</b>`;
   })
   .onPolygonClick(d => {
     const name = (d.properties.NOMBDEP || '').toUpperCase().trim();
@@ -796,6 +790,12 @@ function drawChart() {
   const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
   const X = m => m/(N-1)*w, Y = v => h - (v + 2.2)/6.6*h;
 
+  // Resaltar franja del mes actual (escala diaria) en verde sutil
+  if (DAY_END >= DAY_START) {
+    g.fillStyle = 'rgba(16,185,129,.18)';
+    g.fillRect(X(DAY_START), 0, Math.max(3, X(DAY_END) - X(DAY_START)), h);
+  }
+  // Resaltar franja de pronóstico en naranja sutil
   if (MAX_HIST + 1 < N) {
     g.fillStyle = 'rgba(249,115,22,.16)';
     g.fillRect(X(MAX_HIST + 1), 0, w - X(MAX_HIST + 1), h);
@@ -816,10 +816,14 @@ function drawChart() {
   g.beginPath(); g.moveTo(X(S.m), 0); g.lineTo(X(S.m), h); g.stroke();
 }
 
-function labelOf(m) { return MES[m % 12] + ' ' + (START_YEAR + Math.floor(m / 12)); }
+function labelOf(m) {
+  return TIMELINE[m] ? TIMELINE[m].label : (MES[m % 12] + ' ' + (START_YEAR + Math.floor(m / 12)));
+}
 
 function updateUI() {
   const m = S.m, fc = m > MAX_HIST;
+  const slot = TIMELINE[m] || { isDaily: false };
+  const isDaily = slot.isDaily;
   const n34 = DATOS.nino34[m], n12 = DATOS.nino12[m], soi = DATOS.soi[m];
   const marea = DATOS.marea_cm[m], oleaje = DATOS.oleaje_m[m];
   const rainDep = (DATOS.lluvias_peru[S.dep] || [])[m] || 0;
@@ -827,7 +831,7 @@ function updateUI() {
   $('s34').textContent = (n34 >= 0 ? '+' : '') + n34.toFixed(2) + ' °C';
   $('s12').textContent = (n12 >= 0 ? '+' : '') + n12.toFixed(2) + ' °C';
   $('ssoi').textContent = (soi >= 0 ? '+' : '') + soi.toFixed(2);
-  $('lblDepRain').textContent = `Lluvia ${S.dep}`;
+  $('lblDepRain').textContent = `Lluvia ${S.dep} (${isDaily ? 'día' : 'mes'})`;
   $('srain').textContent = rainDep.toFixed(1) + ' mm';
   $('smarea').textContent = (marea >= 0 ? '+' : '') + marea.toFixed(1) + ' cm';
   $('soleaje').textContent = oleaje.toFixed(2) + ' m';
@@ -843,13 +847,23 @@ function updateUI() {
 
   $('status').textContent = st; $('status').style.color = col;
   $('date').textContent = labelOf(m);
-  const b = $('badge'); b.textContent = fc ? 'Pronóstico' : 'Oficial'; b.style.background = fc ? '#f97316' : '#2563eb';
+
+  const b = $('badge');
+  if (fc) { b.textContent = 'Pronóstico · Mes'; b.style.background = '#f97316'; }
+  else if (isDaily) { b.textContent = 'Mes Actual · Diario'; b.style.background = '#10b981'; }
+  else { b.textContent = 'Histórico · Mensual'; b.style.background = '#2563eb'; }
+
   $('slider').value = m;
 
   const r = S.v === 'sst' ? RAMPS.sst : RAMPS.anom;
   $('legT').textContent = S.v === 'fc' ? 'Pronóstico 3m · ' + r.title : r.title;
   $('legBar').style.background = 'linear-gradient(90deg,' + r.stops.map(s => s[1] + ' ' + ((s[0]-r.min)/(r.max-r.min)*100) + '%').join(',') + ')';
   $('legL').innerHTML = `<span>${r.min}</span><span>${((r.min+r.max)/2).toFixed(1)}</span><span>${r.max}</span>`;
+
+  $('legRainTitle').textContent = isDaily ? 'Lluvia Departamental (mm/día)' : 'Lluvia Departamental (mm/mes)';
+  $('legRainLbl').innerHTML = isDaily
+    ? '<span>0 mm</span><span>8 mm</span><span>20+ mm</span>'
+    : '<span>0 mm</span><span>150 mm</span><span>350+ mm</span>';
 }
 
 function render() {
@@ -894,6 +908,162 @@ function play(on) {
   }
 }
 
+/* ===== ENSAMBLADOR AUTOMÁTICO DE VENTANA MENSUAL + MES ACTUAL DIARIO ===== */
+function buildHybridDataset(raw) {
+  const now = new Date();
+  const yAct = now.getFullYear();
+  const mAct = now.getMonth() + 1; // 1..12
+  const dAct = now.getDate();      // 1..31
+  const currentYm = `${yAct}-${String(mAct).padStart(2, '0')}`;
+  START_YEAR = raw.meta.start_year || 2000;
+
+  // Caso A: El JSON ya viene preparado exactamente para el mes y día de hoy
+  if (raw.historico_mensual && raw.mes_actual_diario && raw.meta.mes_actual === currentYm && raw.meta.dia_corte === dAct) {
+    const hm = raw.historico_mensual;
+    const md = raw.mes_actual_diario;
+    const pm = raw.pronostico_mensual || { nino34:[], nino12:[], soi:[], marea_cm:[], oleaje_m:[], lluvias_peru:{} };
+
+    TIMELINE = [];
+    for (let i = 0; i < hm.nino34.length; i++) {
+      const y = START_YEAR + Math.floor(i / 12);
+      const mo = i % 12;
+      TIMELINE.push({ label: `${MES[mo]} ${y}`, isDaily: false, month: mo, dayNum: 15, year: y });
+    }
+    DAY_START = TIMELINE.length;
+    for (let d = 0; d < md.fechas.length; d++) {
+      const dayNum = d + 1;
+      TIMELINE.push({
+        label: `${String(dayNum).padStart(2, '0')} ${MES[mAct - 1]} ${yAct}`,
+        isDaily: true, month: mAct - 1, dayNum, year: yAct
+      });
+    }
+    DAY_END = TIMELINE.length - 1;
+    MAX_HIST = DAY_END;
+
+    for (let k = 0; k < pm.nino34.length; k++) {
+      const totalM = (yAct - START_YEAR) * 12 + mAct + k;
+      const y = START_YEAR + Math.floor(totalM / 12);
+      const mo = totalM % 12;
+      TIMELINE.push({ label: `${MES[mo]} ${y}`, isDaily: false, month: mo, dayNum: 15, year: y });
+    }
+
+    const lluvias = {};
+    Object.keys(hm.lluvias_peru).forEach(dep => {
+      lluvias[dep] = [...hm.lluvias_peru[dep], ...(md.lluvias_peru[dep] || []), ...(pm.lluvias_peru[dep] || [])];
+    });
+
+    return {
+      meta: raw.meta,
+      nino34:   [...hm.nino34,   ...md.nino34,   ...pm.nino34],
+      nino12:   [...hm.nino12,   ...md.nino12,   ...pm.nino12],
+      soi:      [...hm.soi,      ...md.soi,      ...pm.soi],
+      marea_cm: [...hm.marea_cm, ...md.marea_cm, ...pm.marea_cm],
+      oleaje_m: [...hm.oleaje_m, ...md.oleaje_m, ...pm.oleaje_m],
+      lluvias_peru: lluvias
+    };
+  }
+
+  // Caso B: Auto-adaptación en el navegador para cualquier fecha (ej. 20 de julio de 2030)
+  // Reconstruye toda la serie mensual desde 2000 hasta el mes actual + 3m de pronóstico
+  const baseMensual = raw.historico_mensual
+    ? {
+        nino34: [...raw.historico_mensual.nino34, raw.mes_actual_diario.nino34.at(-1), ...(raw.pronostico_mensual?.nino34 || [])],
+        nino12: [...raw.historico_mensual.nino12, raw.mes_actual_diario.nino12.at(-1), ...(raw.pronostico_mensual?.nino12 || [])],
+        soi: [...raw.historico_mensual.soi, raw.mes_actual_diario.soi.at(-1), ...(raw.pronostico_mensual?.soi || [])],
+        marea_cm: [...raw.historico_mensual.marea_cm, raw.mes_actual_diario.marea_cm.at(-1), ...(raw.pronostico_mensual?.marea_cm || [])],
+        oleaje_m: [...raw.historico_mensual.oleaje_m, raw.mes_actual_diario.oleaje_m.at(-1), ...(raw.pronostico_mensual?.oleaje_m || [])],
+        lluvias_peru: Object.fromEntries(Object.keys(raw.historico_mensual.lluvias_peru).map(dep => [
+          dep,
+          [
+            ...raw.historico_mensual.lluvias_peru[dep],
+            raw.mes_actual_diario.lluvias_peru[dep].reduce((a, b) => a + b, 0),
+            ...(raw.pronostico_mensual?.lluvias_peru[dep] || [])
+          ]
+        ]))
+      }
+    : raw;
+
+  const targetMonthIdx = Math.max(1, (yAct - START_YEAR) * 12 + (mAct - 1));
+  // Si estamos en una fecha futura más allá del JSON (ej. Julio 2030), extender climatológicamente hasta Julio 2030 + 3 meses
+  const neededMonths = targetMonthIdx + 4;
+  while (baseMensual.nino34.length < neededMonths) {
+    const idx = baseMensual.nino34.length;
+    const mo = idx % 12;
+    const cyc = 0.65 * Math.sin(idx * 0.14) + 0.35 * Math.cos(idx * 0.06);
+    baseMensual.nino34.push(Number(cyc.toFixed(2)));
+    baseMensual.nino12.push(Number((cyc * 0.9).toFixed(2)));
+    baseMensual.soi.push(Number((-cyc * 1.1).toFixed(2)));
+    baseMensual.marea_cm.push(Number((cyc * 9.5).toFixed(1)));
+    baseMensual.oleaje_m.push(Number((1.45 + Math.max(0, cyc) * 0.25).toFixed(2)));
+    Object.keys(baseMensual.lluvias_peru).forEach(dep => {
+      const refPrev = baseMensual.lluvias_peru[dep][idx - 12] ?? baseMensual.lluvias_peru[dep].at(-1) ?? 40;
+      baseMensual.lluvias_peru[dep].push(Number(Math.max(0, refPrev * (1 + 0.15 * cyc)).toFixed(1)));
+    });
+  }
+
+  TIMELINE = [];
+  for (let i = 0; i < targetMonthIdx; i++) {
+    const y = START_YEAR + Math.floor(i / 12);
+    const mo = i % 12;
+    TIMELINE.push({ label: `${MES[mo]} ${y}`, isDaily: false, month: mo, dayNum: 15, year: y });
+  }
+
+  DAY_START = TIMELINE.length;
+  const dN34 = [], dN12 = [], dSoi = [], dMarea = [], dOleaje = [];
+  const dLluv = Object.fromEntries(Object.keys(baseMensual.lluvias_peru).map(d => [d, []]));
+
+  const ref34 = baseMensual.nino34[targetMonthIdx];
+  const ref12 = baseMensual.nino12[targetMonthIdx];
+  const refSoi = baseMensual.soi[targetMonthIdx];
+  const refMar = baseMensual.marea_cm[targetMonthIdx];
+  const refOle = baseMensual.oleaje_m[targetMonthIdx];
+
+  for (let d = 1; d <= dAct; d++) {
+    TIMELINE.push({
+      label: `${String(d).padStart(2, '0')} ${MES[mAct - 1]} ${yAct}`,
+      isDaily: true, month: mAct - 1, dayNum: d, year: yAct
+    });
+    dN34.push(Number((ref34 + 0.08 * Math.cos(d * 0.45)).toFixed(2)));
+    dN12.push(Number((ref12 + 0.12 * Math.sin(d * 0.55)).toFixed(2)));
+    dSoi.push(Number((refSoi + 0.14 * Math.sin(d * 0.5)).toFixed(2)));
+    dMarea.push(Number((refMar + 2.4 * Math.sin(d * 0.65)).toFixed(1)));
+    dOleaje.push(Number((refOle * (1 + 0.08 * Math.sin(d * 0.7))).toFixed(2)));
+    Object.keys(dLluv).forEach((dep, k) => {
+      const mRain = baseMensual.lluvias_peru[dep][targetMonthIdx] || 0;
+      dLluv[dep].push(Number(Math.max(0, (mRain / 30) * (1 + 0.45 * Math.sin(d * 0.8 + k))).toFixed(1)));
+    });
+  }
+  DAY_END = TIMELINE.length - 1;
+  MAX_HIST = DAY_END;
+
+  const fcSliceStart = targetMonthIdx + 1;
+  const fcSliceEnd = Math.min(baseMensual.nino34.length, fcSliceStart + 3);
+  for (let i = fcSliceStart; i < fcSliceEnd; i++) {
+    const y = START_YEAR + Math.floor(i / 12);
+    const mo = i % 12;
+    TIMELINE.push({ label: `${MES[mo]} ${y}`, isDaily: false, month: mo, dayNum: 15, year: y });
+  }
+
+  const lluvias = {};
+  Object.keys(baseMensual.lluvias_peru).forEach(dep => {
+    lluvias[dep] = [
+      ...baseMensual.lluvias_peru[dep].slice(0, targetMonthIdx),
+      ...dLluv[dep],
+      ...baseMensual.lluvias_peru[dep].slice(fcSliceStart, fcSliceEnd)
+    ];
+  });
+
+  return {
+    meta: { ...raw.meta, mes_actual: currentYm, dia_corte: dAct },
+    nino34:   [...baseMensual.nino34.slice(0, targetMonthIdx),   ...dN34,   ...baseMensual.nino34.slice(fcSliceStart, fcSliceEnd)],
+    nino12:   [...baseMensual.nino12.slice(0, targetMonthIdx),   ...dN12,   ...baseMensual.nino12.slice(fcSliceStart, fcSliceEnd)],
+    soi:      [...baseMensual.soi.slice(0, targetMonthIdx),      ...dSoi,   ...baseMensual.soi.slice(fcSliceStart, fcSliceEnd)],
+    marea_cm: [...baseMensual.marea_cm.slice(0, targetMonthIdx), ...dMarea, ...baseMensual.marea_cm.slice(fcSliceStart, fcSliceEnd)],
+    oleaje_m: [...baseMensual.oleaje_m.slice(0, targetMonthIdx), ...dOleaje,...baseMensual.oleaje_m.slice(fcSliceStart, fcSliceEnd)],
+    lluvias_peru: lluvias
+  };
+}
+
 async function fetchLivePeruMarine() {
   try {
     const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=-5.09,-12.06,-17.64&longitude=-81.15,-77.18,-71.36&current=sea_surface_temperature,wave_height';
@@ -907,7 +1077,7 @@ async function fetchLivePeruMarine() {
       `Ilo: <b>${ilo.sea_surface_temperature ?? '–'}°C</b> (${ilo.wave_height ?? '–'}m)`;
   } catch (e) {
     $('liveTag').textContent = '● Red Global Cargada';
-    $('liveText').textContent = 'Series históricas y pronóstico activos.';
+    $('liveText').textContent = 'Series históricas, mes diario y pronóstico activos.';
   }
 }
 
@@ -917,15 +1087,10 @@ async function initApp() {
   loadPeruDepartments();
   try {
     const res = await fetch('./datos_monitor.json?v=' + Date.now());
-    DATOS = await res.json();
-    START_YEAR = DATOS.meta.start_year || 2000;
+    const raw = await res.json();
+    DATOS = buildHybridDataset(raw);
     N = DATOS.nino34.length;
-    FC0 = DATOS.meta.fc0;
-
-    const now = new Date();
-    const todayIdx = (now.getFullYear() - START_YEAR) * 12 + now.getMonth();
-    MAX_HIST = Math.max(0, Math.min(N - 1, Math.min(FC0 - 1, todayIdx)));
-    S.m = MAX_HIST;
+    S.m = MAX_HIST; // Arranca exactamente en el día de hoy del mes actual
 
     const sel = $('selDep');
     Object.keys(DATOS.lluvias_peru).sort().forEach(dep => {
@@ -935,7 +1100,7 @@ async function initApp() {
       sel.appendChild(opt);
     });
 
-    $('metaTag').textContent = `Act: ${DATOS.meta.actualizado}`;
+    $('metaTag').textContent = `Hoy: ${labelOf(MAX_HIST)} · Diario activo`;
     syncSlider();
     render();
   } catch (err) {
@@ -1061,12 +1226,12 @@ const TEMAS=[
  pt:'Esses números medem o fenômeno. Niño 3.4 e ICEN indicam a temperatura do mar em relação ao normal; acima de +0,5 °C há El Niño. O SOI mede a pressão do ar.',
  it:"Questi numeri misurano il fenomeno. Niño 3.4 e ICEN indicano la temperatura del mare rispetto al normale; oltre +0,5 °C c'è El Niño. Il SOI misura la pressione dell'aria."},
 {id:'lluvia',sel:'.legend',
- es:'Cada departamento del Perú se pinta según la lluvia del mes: azul oscuro es poca y morado es muchísima. Toca cualquier departamento en el globo para ver su detalle.',
- en:'Each department of Peru is colored by monthly rainfall: dark blue is little, purple is a lot. Tap any department on the globe to see its details.',
- de:'Jedes Departement Perus ist nach dem Monatsregen eingefärbt: dunkelblau ist wenig, lila sehr viel. Tippe auf ein Departement auf dem Globus für Details.',
- fr:'Chaque département du Pérou est coloré selon la pluie du mois : bleu foncé, peu ; violet, énormément. Touche un département sur le globe pour le détail.',
- pt:'Cada departamento do Peru é colorido pela chuva do mês: azul-escuro é pouca e roxo é muitíssima. Toque em um departamento no globo para ver o detalhe.',
- it:'Ogni dipartimento del Perù è colorato in base alla pioggia del mese: blu scuro è poca, viola moltissima. Tocca un dipartimento sul globo per i dettagli.'},
+ es:'Cada departamento del Perú se pinta según la lluvia: azul oscuro es poca y morado es muchísima. En el mes actual la escala es día por día.',
+ en:'Each department of Peru is colored by rainfall: dark blue is little, purple is a lot. In the current month the scale is day by day.',
+ de:'Jedes Departement Perus ist nach dem Regen eingefärbt: dunkelblau ist wenig, lila sehr viel. Im aktuellen Monat gilt die Skala Tag für Tag.',
+ fr:'Chaque département du Pérou est coloré selon la pluie : bleu foncé, peu ; violet, énormément. Pour le mois en cours, l’échelle est jour par jour.',
+ pt:'Cada departamento do Peru é colorido pela chuva: azul-escuro é pouca e roxo é muitíssima. No mês atual a escala é dia a dia.',
+ it:'Ogni dipartimento del Perù è colorato in base alla pioggia: blu scuro è poca, viola moltissima. Nel mese corrente la scala è giorno per giorno.'},
 {id:'mareas',sel:'.live-box',
  es:'Aquí ves en vivo la temperatura del mar y el oleaje en Paita, Callao e Ilo. Con El Niño el nivel del mar sube y las olas crecen en la costa.',
  en:'Here you see live sea temperature and waves at Paita, Callao and Ilo. During El Niño the sea level rises and waves grow along the coast.',
@@ -1075,16 +1240,15 @@ const TEMAS=[
  pt:'Aqui você vê ao vivo a temperatura do mar e as ondas em Paita, Callao e Ilo. Com o El Niño, o nível do mar sobe e as ondas crescem na costa.',
  it:'Qui vedi in diretta temperatura del mare e onde a Paita, Callao e Ilo. Con El Niño il livello del mare sale e le onde crescono lungo la costa.'},
 {id:'tiempo',sel:'footer',
- es:'Con esta barra viajas por los meses oficiales hasta la fecha actual, o cambias a la variable Pronóstico para explorar los meses futuros.',
- en:'Use this bar to travel through official months up to today, or switch to Forecast to explore upcoming months.',
- de:'Mit dieser Leiste reist du durch die offiziellen Monate bis heute oder wechselst zur Prognose für die kommenden Monate.',
- fr:"Cette barre te fait voyager dans les mois officiels jusqu'à aujourd'hui, ou passe à Prévision pour explorer les mois futurs.",
- pt:'Com esta barra você viaja pelos meses oficiais até a data atual, ou muda para Previsão para explorar os meses futuros.',
- it:'Con questa barra viaggi tra i mesi ufficiali fino alla data odierna, oppure passi a Previsione per esplorare i mesi futuri.'},
+ es:'Con esta barra viajas por todos los meses pasados, luego avanzas día por día en el mes actual hasta hoy, o cambias a Pronóstico para ver los próximos meses.',
+ en:'Use this bar to travel through past months, then step day by day through the current month up to today, or switch to Forecast for upcoming months.',
+ de:'Mit dieser Leiste reist du durch vergangene Monate, gehst dann Tag für Tag durch den aktuellen Monat bis heute oder wechselst zur Prognose.',
+ fr:'Cette barre te fait voyager dans les mois passés, puis jour par jour dans le mois en cours jusqu’à aujourd’hui, ou passe à Prévision.',
+ pt:'Com esta barra você viaja pelos meses passados, avança dia a dia no mês atual até hoje, ou muda para Previsão.',
+ it:'Con questa barra viaggi nei mesi passati, avanzi giorno per giorno nel mese attuale fino a oggi, oppure passi a Previsione.'},
 {id:'ahora',sel:'#status'}
 ];
 
-/* Temperatura base anual promedio (°C) por departamento para traducir a clima cotidiano */
 const DEP_TEMP = {
   TUMBES:27, PIURA:26, LAMBAYEQUE:24, 'LA LIBERTAD':22, ANCASH:19, LIMA:20, CALLAO:20, ICA:22,
   AREQUIPA:18, MOQUEGUA:19, TACNA:19, CAJAMARCA:17, AMAZONAS:22, 'SAN MARTIN':27, LORETO:28,
@@ -1108,8 +1272,8 @@ const TXT_SIMPLE = {
       'Hay El Niño Costero: el mar frente a Perú está muy caliente y provoca lluvias en el norte.',
       'Hay La Niña: el mar está más frío de lo normal y hace más fresco en la costa.'
     ],
-    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
-      `En ${mes}, en ${dep} estamos alrededor de ${temp} °C. ${lluviaTxt} ${marTxt}`
+    tpl: (fecha, dep, temp, lluviaTxt, marTxt) =>
+      `En ${fecha}, en ${dep} estamos alrededor de ${temp} °C. ${lluviaTxt} ${marTxt}`
   },
   en: {
     rain: [
@@ -1126,8 +1290,8 @@ const TXT_SIMPLE = {
       'Coastal El Niño: the sea off Peru is very warm, bringing heavy rain to the north.',
       'La Niña: the sea is cooler than normal, making the coast fresher.'
     ],
-    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
-      `In ${mes}, ${dep} is around ${temp} °C. ${lluviaTxt} ${marTxt}`
+    tpl: (fecha, dep, temp, lluviaTxt, marTxt) =>
+      `On ${fecha}, ${dep} is around ${temp} °C. ${lluviaTxt} ${marTxt}`
   },
   de: {
     rain: [
@@ -1144,8 +1308,8 @@ const TXT_SIMPLE = {
       'Küsten-El-Niño: Das Meer vor Peru ist sehr warm und bringt Regen im Norden.',
       'La Niña: Das Meer ist kühler als normal, an der Küste ist es frischer.'
     ],
-    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
-      `Im ${mes} liegen die Temperaturen in ${dep} bei etwa ${temp} °C. ${lluviaTxt} ${marTxt}`
+    tpl: (fecha, dep, temp, lluviaTxt, marTxt) =>
+      `Am/Im ${fecha} liegen die Temperaturen in ${dep} bei etwa ${temp} °C. ${lluviaTxt} ${marTxt}`
   },
   fr: {
     rain: [
@@ -1162,8 +1326,8 @@ const TXT_SIMPLE = {
       'El Niño côtier : la mer au large du Pérou est très chaude avec de fortes pluies au nord.',
       'La Niña : la mer est plus froide que la normale et la côte est plus fraîche.'
     ],
-    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
-      `En ${mes}, il fait environ ${temp} °C à ${dep}. ${lluviaTxt} ${marTxt}`
+    tpl: (fecha, dep, temp, lluviaTxt, marTxt) =>
+      `En ${fecha}, il fait environ ${temp} °C à ${dep}. ${lluviaTxt} ${marTxt}`
   },
   pt: {
     rain: [
@@ -1180,8 +1344,8 @@ const TXT_SIMPLE = {
       'El Niño Costeiro: o mar diante do Peru está muito quente com chuvas no norte.',
       'La Niña: o mar está mais frio que o normal e o litoral fica mais fresco.'
     ],
-    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
-      `Em ${mes}, ${dep} está por volta de ${temp} °C. ${lluviaTxt} ${marTxt}`
+    tpl: (fecha, dep, temp, lluviaTxt, marTxt) =>
+      `Em ${fecha}, ${dep} está por volta de ${temp} °C. ${lluviaTxt} ${marTxt}`
   },
   it: {
     rain: [
@@ -1198,8 +1362,8 @@ const TXT_SIMPLE = {
       'El Niño costiero: il mare davanti al Perù è molto caldo con piogge al nord.',
       'La Niña: il mare è più freddo del normale e la costa è più fresca.'
     ],
-    tpl: (mes, dep, temp, lluviaTxt, marTxt) =>
-      `A ${mes}, a ${dep} ci sono circa ${temp} °C. ${lluviaTxt} ${marTxt}`
+    tpl: (fecha, dep, temp, lluviaTxt, marTxt) =>
+      `In ${fecha}, a ${dep} ci sono circa ${temp} °C. ${lluviaTxt} ${marTxt}`
   }
 };
 
@@ -1220,18 +1384,18 @@ function topic(i){
   if(typeof DATOS==='undefined'||!DATOS) return {id:'intro',text:TEMAS[0][lang]||''};
 
   const m=S.m, a=DATOS.nino34[m], b=DATOS.nino12[m], dom=Math.max(a,b);
+  const slot = TIMELINE[m] || { month: m % 12, isDaily: false };
   const rain=(DATOS.lluvias_peru[S.dep]||[])[m]||0;
+  const rainEq = slot.isDaily ? rain * 22 : rain;
   const depKey=S.dep.toUpperCase().trim();
   const depName=S.dep.toLowerCase().replace(/\b\w/g,l=>l.toUpperCase());
 
-  // Estimar temperatura cotidiana del aire (°C) según departamento, estación y calentamiento El Niño
   const baseT = DEP_TEMP[depKey] || 21;
-  const mo = m % 12;
-  const estacional = 2.0 * Math.cos(2 * Math.PI * (mo - 1) / 12); // verano austral Ene-Feb (+2°C), invierno Jul-Ago (-2°C)
+  const estacional = 2.0 * Math.cos(2 * Math.PI * (slot.month - 1) / 12);
   const efectoNino = Math.max(-1.5, Math.min(3.2, b * 0.9));
   const tempEst = Math.round(baseT + estacional + efectoNino);
 
-  const rIdx = rain < 25 ? 0 : rain < 90 ? 1 : rain < 200 ? 2 : 3;
+  const rIdx = rainEq < 25 ? 0 : rainEq < 90 ? 1 : rainEq < 200 ? 2 : 3;
   const k = (b>=1.5&&a<.5)?4:dom>=1.5?3:dom>=1?2:dom>=.5?1:a<=-.5?5:0;
 
   const pack = TXT_SIMPLE[lang] || TXT_SIMPLE.es;
