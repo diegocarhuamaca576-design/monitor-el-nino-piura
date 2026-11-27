@@ -258,7 +258,7 @@ const MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','
 const $ = id => document.getElementById(id);
 
 let DATOS = null, N = 0, FC0 = 0, MAX_HIST = 0, DAY_START = 0, DAY_END = 0, START_YEAR = 2000;
-let TIMELINE = []; // [{ label, isDaily, monthIdx, dayNum, year, month }]
+let TIMELINE = [];
 const S = { m: 0, v: 'anom', dep: 'PIURA', playing: false, timer: null };
 
 const vw = window.innerWidth;
@@ -654,7 +654,6 @@ if (controls) {
 }
 
 let peruFeatures = [];
-// Escala dinámica: mensual (mm/mes) vs diaria (mm/día)
 function rainColor(mm, isDaily) {
   const eqMm = isDaily ? mm * 22 : mm;
   if (eqMm >= 320) return 'rgba(168, 85, 247, 0.72)';
@@ -790,12 +789,10 @@ function drawChart() {
   const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
   const X = m => m/(N-1)*w, Y = v => h - (v + 2.2)/6.6*h;
 
-  // Resaltar franja del mes actual (escala diaria) en verde sutil
   if (DAY_END >= DAY_START) {
     g.fillStyle = 'rgba(16,185,129,.18)';
     g.fillRect(X(DAY_START), 0, Math.max(3, X(DAY_END) - X(DAY_START)), h);
   }
-  // Resaltar franja de pronóstico en naranja sutil
   if (MAX_HIST + 1 < N) {
     g.fillStyle = 'rgba(249,115,22,.16)';
     g.fillRect(X(MAX_HIST + 1), 0, w - X(MAX_HIST + 1), h);
@@ -912,12 +909,11 @@ function play(on) {
 function buildHybridDataset(raw) {
   const now = new Date();
   const yAct = now.getFullYear();
-  const mAct = now.getMonth() + 1; // 1..12
-  const dAct = now.getDate();      // 1..31
+  const mAct = now.getMonth() + 1;
+  const dAct = now.getDate();
   const currentYm = `${yAct}-${String(mAct).padStart(2, '0')}`;
   START_YEAR = raw.meta.start_year || 2000;
 
-  // Caso A: El JSON ya viene preparado exactamente para el mes y día de hoy
   if (raw.historico_mensual && raw.mes_actual_diario && raw.meta.mes_actual === currentYm && raw.meta.dia_corte === dAct) {
     const hm = raw.historico_mensual;
     const md = raw.mes_actual_diario;
@@ -963,8 +959,6 @@ function buildHybridDataset(raw) {
     };
   }
 
-  // Caso B: Auto-adaptación en el navegador para cualquier fecha (ej. 20 de julio de 2030)
-  // Reconstruye toda la serie mensual desde 2000 hasta el mes actual + 3m de pronóstico
   const baseMensual = raw.historico_mensual
     ? {
         nino34: [...raw.historico_mensual.nino34, raw.mes_actual_diario.nino34.at(-1), ...(raw.pronostico_mensual?.nino34 || [])],
@@ -984,11 +978,9 @@ function buildHybridDataset(raw) {
     : raw;
 
   const targetMonthIdx = Math.max(1, (yAct - START_YEAR) * 12 + (mAct - 1));
-  // Si estamos en una fecha futura más allá del JSON (ej. Julio 2030), extender climatológicamente hasta Julio 2030 + 3 meses
   const neededMonths = targetMonthIdx + 4;
   while (baseMensual.nino34.length < neededMonths) {
     const idx = baseMensual.nino34.length;
-    const mo = idx % 12;
     const cyc = 0.65 * Math.sin(idx * 0.14) + 0.35 * Math.cos(idx * 0.06);
     baseMensual.nino34.push(Number(cyc.toFixed(2)));
     baseMensual.nino12.push(Number((cyc * 0.9).toFixed(2)));
@@ -1090,7 +1082,7 @@ async function initApp() {
     const raw = await res.json();
     DATOS = buildHybridDataset(raw);
     N = DATOS.nino34.length;
-    S.m = MAX_HIST; // Arranca exactamente en el día de hoy del mes actual
+    S.m = MAX_HIST;
 
     const sel = $('selDep');
     Object.keys(DATOS.lluvias_peru).sort().forEach(dep => {
@@ -1226,15 +1218,14 @@ initApp();
 const LC={es:'es-ES',en:'en-US',de:'de-DE',fr:'fr-FR',pt:'pt-BR',it:'it-IT'};
 
 const INTRO_ONCE={
-  es:'Hola, soy Orexis, tu asistente climático del monitor El Niño en Perú. ',
-  en:'Hi, I am Orexis, your climate assistant for the El Niño Peru monitor. ',
-  de:'Hallo, ich bin Orexis, dein Klimaassistent für den El-Niño-Monitor in Peru. ',
-  fr:'Bonjour, je suis Orexis, ton assistant climatique du moniteur El Niño au Pérou. ',
-  pt:'Olá, eu sou Orexis, seu assistente climático do monitor El Niño no Peru. ',
-  it:'Ciao, sono Orexis, il tuo assistente climatico del monitor El Niño in Perù. '
+  es:'Hola, soy Orexis, tu asistente climático del monitor El Niño en Perú.',
+  en:'Hi, I am Orexis, your climate assistant for the El Niño Peru monitor.',
+  de:'Hallo, ich bin Orexis, dein Klimaassistent für den El-Niño-Monitor in Peru.',
+  fr:'Bonjour, je suis Orexis, ton assistant climatique du moniteur El Niño au Pérou.',
+  pt:'Olá, eu sou Orexis, seu assistente climático do monitor El Niño no Peru.',
+  it:'Ciao, sono Orexis, il tuo assistente climatico del monitor El Niño in Perù.'
 };
 
-// Viñeta 0 (1 / 7): Resumen simple ciudadano (principal). Viñetas 1..6 (2 / 7 a 7 / 7): Guía técnica.
 const TEMAS=[
 {id:'ahora',sel:'#status'},
 {id:'intro',sel:'header h1',
@@ -1401,14 +1392,19 @@ const TXT_SIMPLE = {
 
 const KEYS=['neutro','debil','moderado','fuerte','costero','nina'];
 
-let lang='es', voiceOn=false, hasIntroduced=false, step=0, spk=false, hl=null, speechToken=0;
-let lastDep=null, lastM=null;
+let lang='es', voiceOn=false, hasIntroduced=false, introPhase=false, step=0, spk=false, hl=null, speechToken=0;
+let lastSpokenKey = '';
 const ox=id=>document.getElementById(id), panel=ox('oxPanel');
 try{
   const saved=localStorage.getItem('oxLang');
   lang=(saved && LC[saved])?saved:'es';
 }catch(e){}
 ox('oxLang').value=lang;
+
+function getActiveDep(){
+  const selVal = ox('selDep')?.value;
+  return (selVal || S.dep || 'PIURA').toUpperCase().trim();
+}
 
 function topic(i){
   const t=TEMAS[i];
@@ -1417,10 +1413,10 @@ function topic(i){
 
   const m=S.m, a=DATOS.nino34[m], b=DATOS.nino12[m], dom=Math.max(a,b);
   const slot = TIMELINE[m] || { month: m % 12, isDaily: false };
-  const rain=(DATOS.lluvias_peru[S.dep]||[])[m]||0;
+  const depKey = getActiveDep();
+  const rain=(DATOS.lluvias_peru[depKey]||[])[m]||0;
   const rainEq = slot.isDaily ? rain * 22 : rain;
-  const depKey=S.dep.toUpperCase().trim();
-  const depName=S.dep.toLowerCase().replace(/\b\w/g,l=>l.toUpperCase());
+  const depName=depKey.toLowerCase().replace(/\b\w/g,l=>l.toUpperCase());
 
   const baseT = DEP_TEMP[depKey] || 21;
   const estacional = 2.0 * Math.cos(2 * Math.PI * (slot.month - 1) / 12);
@@ -1437,6 +1433,25 @@ function topic(i){
   };
 }
 
+// Clave de variables relevantes según la viñeta activa para detectar cambios reales
+function getStepVarSignature(idx){
+  const id = TEMAS[idx]?.id;
+  const dep = getActiveDep();
+  if(id === 'ahora'){
+    return `ahora|${dep}|${S.m}|${ox('status')?.textContent||''}`;
+  }
+  if(id === 'indicadores'){
+    return `ind|${dep}|${S.m}|${ox('s34')?.textContent||''}|${ox('s12')?.textContent||''}|${ox('srain')?.textContent||''}|${ox('smarea')?.textContent||''}`;
+  }
+  if(id === 'lluvia'){
+    return `lluvia|${dep}|${S.m}`;
+  }
+  if(id === 'mareas'){
+    return `mareas|${ox('liveText')?.textContent||''}`;
+  }
+  return `static|${id}`;
+}
+
 function syncAudioControls(){
   ox('oxVoice').textContent = voiceOn ? '🔊' : '🔇';
   ox('oxPlay').textContent  = spk ? '⏸' : '▶';
@@ -1451,26 +1466,79 @@ function setSpk(v){
 
 function stop(){
   speechToken++;
+  introPhase = false;
   try{speechSynthesis.cancel()}catch(e){}
   setSpk(false);
 }
 
 function note(t){ox('oxNote').textContent=t||''}
 
-function speak(tp, withIntro=false){
+function getVoice(){
+  const vs=speechSynthesis.getVoices(), code=LC[lang];
+  return vs.find(x=>x.lang.replace('_','-')===code)||vs.find(x=>x.lang.toLowerCase().startsWith(lang))||null;
+}
+
+// Lee únicamente el contenido de la viñeta actual (desde 0)
+function speakContent(tp, token){
+  if(!voiceOn || token !== speechToken) return;
+  const vs = speechSynthesis.getVoices();
+  const v = getVoice();
+  const u = new SpeechSynthesisUtterance(tp.text);
+  u.lang = LC[lang];
+  u.rate = .96;
+  if(v) u.voice = v;
+  else if(vs.length) note('Tu dispositivo no tiene voz instalada para este idioma; se muestra el texto.');
+
+  lastSpokenKey = getStepVarSignature(step);
+  u.onstart = () => {
+    if(token === speechToken){
+      introPhase = false;
+      setSpk(true);
+    }
+  };
+  u.onend = u.onerror = () => {
+    if(token === speechToken){
+      introPhase = false;
+      setSpk(false);
+    }
+  };
+  speechSynthesis.speak(u);
+}
+
+// Inicia lectura: si es la primera vez, dice la presentación inamovible y luego lee la viñeta vigente
+function startSpeaking(withIntro=false){
   note('');
-  if(!('speechSynthesis' in window)){note('Tu navegador no admite voz.');return}
+  if(!('speechSynthesis' in window)){note('Tu navegador no admite voz.');return;}
   stop();
   const myToken = ++speechToken;
-  const vs=speechSynthesis.getVoices(), code=LC[lang];
-  const v=vs.find(x=>x.lang.replace('_','-')===code)||vs.find(x=>x.lang.toLowerCase().startsWith(lang));
-  const prefix = withIntro ? (INTRO_ONCE[lang] || INTRO_ONCE.es) : '';
-  const u=new SpeechSynthesisUtterance(prefix + tp.text);
-  u.lang=code; u.rate=.96;
-  if(v) u.voice=v; else if(vs.length) note('Tu dispositivo no tiene voz instalada para este idioma; se muestra el texto.');
-  u.onstart=()=>{ if(myToken===speechToken) setSpk(true); };
-  u.onend=u.onerror=()=>{ if(myToken===speechToken) setSpk(false); };
-  speechSynthesis.speak(u);
+  const v = getVoice();
+
+  if(withIntro){
+    introPhase = true;
+    const uIntro = new SpeechSynthesisUtterance(INTRO_ONCE[lang] || INTRO_ONCE.es);
+    uIntro.lang = LC[lang];
+    uIntro.rate = .96;
+    if(v) uIntro.voice = v;
+
+    uIntro.onstart = () => {
+      if(myToken === speechToken) setSpk(true);
+    };
+    uIntro.onend = () => {
+      if(myToken !== speechToken) return;
+      introPhase = false;
+      // Al acabar el saludo inamovible, lee desde 0 el texto actualizado de la viñeta actual
+      speakContent(topic(step), myToken);
+    };
+    uIntro.onerror = () => {
+      if(myToken === speechToken){
+        introPhase = false;
+        setSpk(false);
+      }
+    };
+    speechSynthesis.speak(uIntro);
+  } else {
+    speakContent(topic(step), myToken);
+  }
 }
 
 function show(i, autoSpeak=false){
@@ -1482,11 +1550,12 @@ function show(i, autoSpeak=false){
   const tp=topic(step);
   ox('oxText').textContent=tp.text;
   ox('oxStep').textContent=(step+1)+' / '+TEMAS.length;
+  lastSpokenKey = getStepVarSignature(step);
   syncAudioControls();
   if(autoSpeak && voiceOn){
     const needIntro = !hasIntroduced;
     if(needIntro) hasIntroduced = true;
-    speak(tp, needIntro);
+    startSpeaking(needIntro);
   } else {
     note('');
   }
@@ -1510,7 +1579,6 @@ ox('oxClose').onclick=closeP;
 ox('oxPrev').onclick=()=>show(step-1, voiceOn);
 ox('oxNext').onclick=()=>show(step+1, voiceOn);
 
-// Botón Play central: activa o pausa el audio; se presenta una única vez al primer clic en Play
 ox('oxPlay').onclick=()=>{
   if(spk){
     voiceOn=false;
@@ -1521,10 +1589,9 @@ ox('oxPlay').onclick=()=>{
   voiceOn=true;
   const needIntro = !hasIntroduced;
   if(needIntro) hasIntroduced = true;
-  speak(topic(step), needIntro);
+  startSpeaking(needIntro);
 };
 
-// Botón superior de altavoz sincronizado con el estado del audio
 ox('oxVoice').onclick=()=>{
   if(voiceOn || spk){
     voiceOn=false;
@@ -1534,7 +1601,7 @@ ox('oxVoice').onclick=()=>{
     voiceOn=true;
     const needIntro = !hasIntroduced;
     if(needIntro) hasIntroduced = true;
-    speak(topic(step), needIntro);
+    startSpeaking(needIntro);
   }
 };
 
@@ -1545,22 +1612,34 @@ ox('oxLang').onchange=e=>{
 };
 if('speechSynthesis' in window) speechSynthesis.onvoiceschanged=()=>{};
 
-// Al cambiar de departamento o fecha: vuelve a viñeta 0 y, si estaba hablando, corta y reinicia desde 0
-const origRender = window.render;
-window.render = function(){
-  origRender();
+// Sincronización en tiempo real cuando cambia cualquier variable o departamento en la interfaz
+function onDashboardStateChanged(){
   if(!panel.classList.contains('open')) return;
-  const depChanged = (lastDep !== null && lastDep !== S.dep);
-  const mChanged = (lastM !== null && lastM !== S.m);
-  lastDep = S.dep;
-  lastM = S.m;
+  const newSig = getStepVarSignature(step);
+  if(newSig === lastSpokenKey) return;
+  lastSpokenKey = newSig;
 
-  if(depChanged){
-    show(0, voiceOn || spk);
-  } else if(mChanged && TEMAS[step].id === 'ahora'){
-    show(0, voiceOn || spk);
+  // Actualiza siempre el texto visible al instante (ej. de Piura a Loreto)
+  const tp = topic(step);
+  ox('oxText').textContent = tp.text;
+
+  // Si está diciendo la presentación inicial, NO la corta: la deja terminar y luego lee el nuevo texto
+  if(introPhase) return;
+
+  // Si está leyendo la redacción de la viñeta y cambió una variable relevante, corta a mitad y empieza de 0
+  if(voiceOn || spk){
+    startSpeaking(false);
   }
-};
+}
+
+// Observa los elementos del DOM que cambian con departamento, fecha, indicadores y puertos en vivo
+const obsTargets = ['lblDepRain','srain','s34','s12','ssoi','smarea','soleaje','status','date','liveText'];
+const domObserver = new MutationObserver(() => onDashboardStateChanged());
+obsTargets.forEach(id => {
+  const el = ox(id);
+  if(el) domObserver.observe(el, { childList:true, characterData:true, subtree:true });
+});
+ox('selDep')?.addEventListener('change', () => setTimeout(onDashboardStateChanged, 0));
 
 const ft=document.querySelector('footer');
 new ResizeObserver(()=>document.documentElement.style.setProperty('--ox-b',ft.offsetHeight+'px')).observe(ft);
