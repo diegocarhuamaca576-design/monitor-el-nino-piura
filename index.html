@@ -1153,7 +1153,7 @@ addEventListener('resize', () => {
 initApp();
 </script>
 
-<!-- ===== ORExIS · Asistente virtual ===== -->
+<!-- ===== OREXIS · Asistente virtual ===== -->
 <style>
 #oxOrb{position:fixed;right:14px;bottom:calc(var(--ox-b,70px) + 12px);width:64px;height:64px;z-index:1000;border:0;padding:0;background:none;border-radius:50%;cursor:pointer;filter:drop-shadow(0 6px 14px rgba(0,0,0,.55));transition:transform .2s}
 #oxOrb:hover{transform:scale(1.06)}
@@ -1166,7 +1166,26 @@ initApp();
 .ox-top select,.ox-top button{padding:4px 7px;font-size:12px}
 #oxText{font-size:13.5px;line-height:1.52;overflow-y:auto;min-height:64px;color:#f1f5f9}
 #oxNote{font-size:10.5px;color:var(--mut)}
-.ox-nav{display:flex;gap:6px;align-items:center;justify-content:space-between}
+.ox-nav{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:2px}
+.ox-arrow{
+  width:38px;height:36px;border-radius:10px;
+  background:#0b1220;color:#f8fafc;border:1px solid var(--line);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:13px;cursor:pointer;transition:background .15s,border-color .15s,transform .1s;
+}
+.ox-arrow:hover{background:#162238;border-color:#475569}
+.ox-arrow:active{transform:scale(.95)}
+.ox-mid{display:flex;align-items:center;justify-content:center;gap:10px}
+.ox-play-center{
+  width:48px;height:36px;border-radius:10px;
+  background:#f98e2b;color:#ffffff;border:none;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;cursor:pointer;
+  box-shadow:0 4px 12px rgba(249,142,43,.32);
+  transition:background .15s,transform .1s;
+}
+.ox-play-center:hover{background:#ff9c3f}
+.ox-play-center:active{transform:scale(.95)}
 .ox-hl{box-shadow:0 0 0 2px #7dd3fc inset,0 0 0 3px #7dd3fc!important;border-radius:8px;animation:oxp 1.4s ease-in-out infinite}
 @keyframes oxp{50%{box-shadow:0 0 0 2px #7dd3fc44 inset,0 0 0 3px #7dd3fc44}}
 @media(max-width:640px){
@@ -1187,30 +1206,44 @@ initApp();
       <option value="pt">🇧🇷 Português</option>
       <option value="it">🇮🇹 Italiano</option>
     </select>
-    <button id="oxVoice" title="Activar / desactivar voz">🔊</button>
+    <button id="oxVoice" title="Estado de audio">🔇</button>
     <button id="oxClose" title="Cerrar">✕</button>
   </div>
   <div id="oxText"></div>
   <div id="oxNote"></div>
   <div class="ox-nav">
-    <button id="oxPrev" title="Anterior">◀</button>
-    <span id="oxStep" class="tag"></span>
-    <button id="oxAgain" title="Repetir explicación">↻</button>
-    <button id="oxNext" class="main" title="Siguiente">▶</button>
+    <button id="oxPrev" class="ox-arrow" title="Anterior">◀</button>
+    <div class="ox-mid">
+      <span id="oxStep" class="tag"></span>
+      <button id="oxPlay" class="ox-play-center" title="Escuchar / Pausar">▶</button>
+    </div>
+    <button id="oxNext" class="ox-arrow" title="Siguiente">▶</button>
   </div>
 </section>
 
 <script>
 (function(){
 const LC={es:'es-ES',en:'en-US',de:'de-DE',fr:'fr-FR',pt:'pt-BR',it:'it-IT'};
+
+const INTRO_ONCE={
+  es:'Hola, soy Orexis, tu asistente climático del monitor El Niño en Perú. ',
+  en:'Hi, I am Orexis, your climate assistant for the El Niño Peru monitor. ',
+  de:'Hallo, ich bin Orexis, dein Klimaassistent für den El-Niño-Monitor in Peru. ',
+  fr:'Bonjour, je suis Orexis, ton assistant climatique du moniteur El Niño au Pérou. ',
+  pt:'Olá, eu sou Orexis, seu assistente climático do monitor El Niño no Peru. ',
+  it:'Ciao, sono Orexis, il tuo assistente climatico del monitor El Niño in Perù. '
+};
+
+// Viñeta 0 (1 / 7): Resumen simple ciudadano (principal). Viñetas 1..6 (2 / 7 a 7 / 7): Guía técnica.
 const TEMAS=[
+{id:'ahora',sel:'#status'},
 {id:'intro',sel:'header h1',
- es:'Hola, soy Orexis. Aquí ves el fenómeno El Niño sobre el globo terráqueo: cuando el mar frente a Perú se calienta más de lo normal, cambian las lluvias y las mareas.',
- en:"Hi, I'm Orexis. This globe shows El Niño: when the sea off Peru gets warmer than normal, rainfall and tides change.",
- de:'Hallo, ich bin Orexis. Dieser Globus zeigt El Niño: Wird das Meer vor Peru wärmer als normal, verändern sich Regen und Gezeiten.',
- fr:"Bonjour, je suis Orexis. Ce globe montre El Niño : quand la mer au large du Pérou se réchauffe plus que d'habitude, les pluies et les marées changent.",
- pt:'Olá, eu sou a Orexis. Este globo mostra o El Niño: quando o mar diante do Peru esquenta mais que o normal, chuvas e marés mudam.',
- it:'Ciao, sono Orexis. Questo globo mostra El Niño: quando il mare davanti al Perù si scalda più del normale, cambiano piogge e maree.'},
+ es:'Este globo muestra el fenómeno El Niño sobre el planeta: cuando el mar frente a Perú se calienta más de lo normal, cambian las lluvias y las mareas.',
+ en:'This globe shows El Niño across the planet: when the sea off Peru gets warmer than normal, rainfall and tides change.',
+ de:'Dieser Globus zeigt El Niño auf dem Planeten: Wird das Meer vor Peru wärmer als normal, verändern sich Regen und Gezeiten.',
+ fr:'Ce globe montre El Niño sur la planète : quand la mer au large du Pérou se réchauffe plus que la normale, les pluies et les marées changent.',
+ pt:'Este globo mostra o El Niño no planeta: quando o mar diante do Peru esquenta mais que o normal, chuvas e marés mudam.',
+ it:'Questo globo mostra El Niño sul pianeta: quando il mare davanti al Perù si scalda più del normale, cambiano piogge e maree.'},
 {id:'mapa',sel:'#wrap',
  es:'Puedes girar y acercar el planeta libremente. Los colores cálidos indican agua más caliente de lo normal y los arcos muestran vientos, corrientes y la onda Kelvin.',
  en:'You can freely rotate and zoom the planet. Warm colors mean water hotter than normal, and the arcs show winds, currents and the Kelvin wave.',
@@ -1223,7 +1256,7 @@ const TEMAS=[
  en:'These numbers measure the phenomenon. Niño 3.4 and ICEN are sea temperature compared to normal; above +0.5 °C means an El Niño event. SOI measures air pressure.',
  de:'Diese Zahlen messen das Phänomen. Niño 3.4 und ICEN zeigen die Meerestemperatur im Vergleich zum Normalwert; über +0,5 °C herrscht El Niño. SOI misst den Luftdruck.',
  fr:"Ces chiffres mesurent le phénomène. Niño 3.4 et ICEN indiquent la température de la mer par rapport à la normale ; au-dessus de +0,5 °C, c'est El Niño. Le SOI mesure la pression de l'air.",
- pt:'Esses números medem o fenômeno. Niño 3.4 e ICEN indicam a temperatura do mar em relação ao normal; acima de +0,5 °C há El Niño. O SOI mede a pressão do ar.',
+ pt:'Esses números medem o fenômeno. Niño 3.4 e ICEN indicam a temperatura do mar em relação ao normal; acima +0,5 °C há El Niño. O SOI mede a pressão do ar.',
  it:"Questi numeri misurano il fenomeno. Niño 3.4 e ICEN indicano la temperatura del mare rispetto al normale; oltre +0,5 °C c'è El Niño. Il SOI misura la pressione dell'aria."},
 {id:'lluvia',sel:'.legend',
  es:'Cada departamento del Perú se pinta según la lluvia: azul oscuro es poca y morado es muchísima. En el mes actual la escala es día por día.',
@@ -1245,8 +1278,7 @@ const TEMAS=[
  de:'Mit dieser Leiste reist du durch vergangene Monate, gehst dann Tag für Tag durch den aktuellen Monat bis heute oder wechselst zur Prognose.',
  fr:'Cette barre te fait voyager dans les mois passés, puis jour par jour dans le mois en cours jusqu’à aujourd’hui, ou passe à Prévision.',
  pt:'Com esta barra você viaja pelos meses passados, avança dia a dia no mês atual até hoje, ou muda para Previsão.',
- it:'Con questa barra viaggi nei mesi passati, avanzi giorno per giorno nel mese attuale fino a oggi, oppure passi a Previsione.'},
-{id:'ahora',sel:'#status'}
+ it:'Con questa barra viaggi nei mesi passati, avanzi giorno per giorno nel mese attuale fino a oggi, oppure passi a Previsione.'}
 ];
 
 const DEP_TEMP = {
@@ -1369,19 +1401,19 @@ const TXT_SIMPLE = {
 
 const KEYS=['neutro','debil','moderado','fuerte','costero','nina'];
 
-let lang='es',voiceOn=true,step=0,spk=false,hl=null;
+let lang='es', voiceOn=false, hasIntroduced=false, step=0, spk=false, hl=null, speechToken=0;
+let lastDep=null, lastM=null;
 const ox=id=>document.getElementById(id), panel=ox('oxPanel');
 try{
   const saved=localStorage.getItem('oxLang');
   lang=(saved && LC[saved])?saved:'es';
-  voiceOn=localStorage.getItem('oxVoice')!=='0';
 }catch(e){}
 ox('oxLang').value=lang;
 
 function topic(i){
   const t=TEMAS[i];
   if(t.id!=='ahora') return {id:t.id,text:t[lang]};
-  if(typeof DATOS==='undefined'||!DATOS) return {id:'intro',text:TEMAS[0][lang]||''};
+  if(typeof DATOS==='undefined'||!DATOS) return {id:'intro',text:TEMAS[1][lang]||''};
 
   const m=S.m, a=DATOS.nino34[m], b=DATOS.nino12[m], dom=Math.max(a,b);
   const slot = TIMELINE[m] || { month: m % 12, isDaily: false };
@@ -1404,50 +1436,130 @@ function topic(i){
     text: pack.tpl(labelOf(m), depName, tempEst, pack.rain[rIdx], pack.sea[k])
   };
 }
-function setSpk(v){spk=v;ox('oxOrb').classList.toggle('spk',v)}
-function stop(){try{speechSynthesis.cancel()}catch(e){} setSpk(false)}
+
+function syncAudioControls(){
+  ox('oxVoice').textContent = voiceOn ? '🔊' : '🔇';
+  ox('oxPlay').textContent  = spk ? '⏸' : '▶';
+  ox('oxPlay').title        = spk ? 'Pausar lectura' : 'Escuchar explicación';
+}
+
+function setSpk(v){
+  spk=v;
+  ox('oxOrb').classList.toggle('spk',v);
+  syncAudioControls();
+}
+
+function stop(){
+  speechToken++;
+  try{speechSynthesis.cancel()}catch(e){}
+  setSpk(false);
+}
+
 function note(t){ox('oxNote').textContent=t||''}
 
-function speak(tp){
+function speak(tp, withIntro=false){
   note('');
   if(!('speechSynthesis' in window)){note('Tu navegador no admite voz.');return}
+  stop();
+  const myToken = ++speechToken;
   const vs=speechSynthesis.getVoices(), code=LC[lang];
   const v=vs.find(x=>x.lang.replace('_','-')===code)||vs.find(x=>x.lang.toLowerCase().startsWith(lang));
-  const u=new SpeechSynthesisUtterance(tp.text); u.lang=code; u.rate=.95;
+  const prefix = withIntro ? (INTRO_ONCE[lang] || INTRO_ONCE.es) : '';
+  const u=new SpeechSynthesisUtterance(prefix + tp.text);
+  u.lang=code; u.rate=.96;
   if(v) u.voice=v; else if(vs.length) note('Tu dispositivo no tiene voz instalada para este idioma; se muestra el texto.');
-  u.onstart=()=>setSpk(true); u.onend=u.onerror=()=>setSpk(false);
+  u.onstart=()=>{ if(myToken===speechToken) setSpk(true); };
+  u.onend=u.onerror=()=>{ if(myToken===speechToken) setSpk(false); };
   speechSynthesis.speak(u);
 }
 
-function show(i, silent=false){
+function show(i, autoSpeak=false){
   step=(i+TEMAS.length)%TEMAS.length;
-  if(!silent) stop();
+  stop();
   document.querySelectorAll('.ox-hl').forEach(el=>el.classList.remove('ox-hl'));
   hl=document.querySelector(TEMAS[step].sel);
   if(hl){hl.classList.add('ox-hl');hl.scrollIntoView({block:'nearest',behavior:'smooth'})}
   const tp=topic(step);
   ox('oxText').textContent=tp.text;
   ox('oxStep').textContent=(step+1)+' / '+TEMAS.length;
-  if(!silent && voiceOn) speak(tp); else if(!silent) note('');
+  syncAudioControls();
+  if(autoSpeak && voiceOn){
+    const needIntro = !hasIntroduced;
+    if(needIntro) hasIntroduced = true;
+    speak(tp, needIntro);
+  } else {
+    note('');
+  }
 }
 
-function closeP(){panel.classList.remove('open');stop();document.querySelectorAll('.ox-hl').forEach(el=>el.classList.remove('ox-hl'))}
-function syncVoiceBtn(){ox('oxVoice').textContent=voiceOn?'🔊':'🔇'}
-syncVoiceBtn();
+function closeP(){
+  panel.classList.remove('open');
+  voiceOn=false;
+  stop();
+  syncAudioControls();
+  document.querySelectorAll('.ox-hl').forEach(el=>el.classList.remove('ox-hl'));
+}
 
-ox('oxOrb').onclick=()=>{ if(panel.classList.contains('open')) closeP(); else {panel.classList.add('open');show(0)} };
+syncAudioControls();
+
+ox('oxOrb').onclick=()=>{
+  if(panel.classList.contains('open')) closeP();
+  else { panel.classList.add('open'); show(0, false); }
+};
 ox('oxClose').onclick=closeP;
-ox('oxPrev').onclick=()=>show(step-1);
-ox('oxNext').onclick=()=>show(step+1);
-ox('oxAgain').onclick=()=>show(step);
-ox('oxVoice').onclick=()=>{voiceOn=!voiceOn;try{localStorage.setItem('oxVoice',voiceOn?'1':'0')}catch(e){} syncVoiceBtn(); voiceOn?show(step):(stop(),note(''))};
-ox('oxLang').onchange=e=>{lang=e.target.value;try{localStorage.setItem('oxLang',lang)}catch(x){} show(step)};
+ox('oxPrev').onclick=()=>show(step-1, voiceOn);
+ox('oxNext').onclick=()=>show(step+1, voiceOn);
+
+// Botón Play central: activa o pausa el audio; se presenta una única vez al primer clic en Play
+ox('oxPlay').onclick=()=>{
+  if(spk){
+    voiceOn=false;
+    stop();
+    note('');
+    return;
+  }
+  voiceOn=true;
+  const needIntro = !hasIntroduced;
+  if(needIntro) hasIntroduced = true;
+  speak(topic(step), needIntro);
+};
+
+// Botón superior de altavoz sincronizado con el estado del audio
+ox('oxVoice').onclick=()=>{
+  if(voiceOn || spk){
+    voiceOn=false;
+    stop();
+    note('');
+  } else {
+    voiceOn=true;
+    const needIntro = !hasIntroduced;
+    if(needIntro) hasIntroduced = true;
+    speak(topic(step), needIntro);
+  }
+};
+
+ox('oxLang').onchange=e=>{
+  lang=e.target.value;
+  try{localStorage.setItem('oxLang',lang)}catch(x){}
+  show(step, voiceOn);
+};
 if('speechSynthesis' in window) speechSynthesis.onvoiceschanged=()=>{};
 
+// Al cambiar de departamento o fecha: vuelve a viñeta 0 y, si estaba hablando, corta y reinicia desde 0
 const origRender = window.render;
 window.render = function(){
   origRender();
-  if(panel.classList.contains('open') && TEMAS[step].id==='ahora') show(step, true);
+  if(!panel.classList.contains('open')) return;
+  const depChanged = (lastDep !== null && lastDep !== S.dep);
+  const mChanged = (lastM !== null && lastM !== S.m);
+  lastDep = S.dep;
+  lastM = S.m;
+
+  if(depChanged){
+    show(0, voiceOn || spk);
+  } else if(mChanged && TEMAS[step].id === 'ahora'){
+    show(0, voiceOn || spk);
+  }
 };
 
 const ft=document.querySelector('footer');
